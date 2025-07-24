@@ -25,122 +25,235 @@ mcp = FastMCP(
 )
 
 
-@mcp.tool(title="STRING: Map input identifiers to STRING identifiers")
-async def string_map_identifiers(
-    identifiers: Annotated[
+@mcp.tool(title="STRING: Resolves protein identifiers to metadata")
+async def string_resolve_proteins(
+    proteins: Annotated[
         str,
-        Field(description="Required. One or more input protein identifiers (gene names, UniProt IDs, etc), separated by %0d. Example: TP53%0dSMO")
+        Field(
+            description=(
+                "Required. One or more input protein identifiers (gene symbols, UniProt IDs, etc.), "
+                "separated by carriage return (%0d). Example: TP53%0dSMO"
+            )
+        )
     ],
-    echo_query: Annotated[
-        Optional[int],
-        Field(description="Optional. If set to 1, includes your input identifier as a separate column. Default is 0.")
-    ] = 0,
     species: Annotated[
         str,
-        Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
+        Field(
+            description=(
+                "Optional. NCBI taxonomy ID (e.g. 9606 for human) or STRING genome ID "
+                "(e.g. STRG0AXXXXX for uploaded genomes)."
+            )
+        )
     ] = None
 ) -> dict:
     """
-    This tool maps your input identifiers (gene names, synonyms, or UniProt IDs) to STRING’s internal identifiers.
+    Maps one or more protein identifiers to their corresponding STRING metadata, including:
+    gene symbol, description, internal STRING ID, and species information.
 
-    - For each input protein, the best match is placed in the first row.  
-    - Mapping your identifiers in advance improves speed and avoids ambiguity when calling other STRING API methods.
-    - If species is not specified, assume human (9606) or ask user to clarify.
+    This method is useful for translating raw identifiers into readable, annotated protein entries.
 
-    Output fields (per mapped identifier):
-      - queryItem: Your original input identifier (if echo_query=1)
-      - queryIndex: Position of the identifier in your input list (starting from 0)
-      - stringId: STRING internal identifier
-      - ncbiTaxonId: NCBI taxonomy ID
-      - taxonName: Species name
-      - preferredName: Common protein name
-      - annotation: Protein annotation
+    Output fields (per matched identifier):
+      - `queryItem`: Your original input identifier (if `echo_query=1`)
+      - `queryIndex`: Position of the identifier in your input list (starting from 0)
+      - `stringId`: STRING internal identifier
+      - `ncbiTaxonId`: NCBI taxonomy ID
+      - `taxonName`: Species name
+      - `preferredName`: Common protein name
+      - `annotation`: Protein annotation
 
-    Example identifiers: "TP53%0dSMO"
+    Example input: "TP53%0dSMO"
     """
-    params = {"identifiers": identifiers, "echo_query": echo_query}
+
+    params = {"identifiers": proteins, "echo_query": 1}
     if species is not None:
         params["species"] = species
 
-    endpoint = f"/api/json/get_string_ids"
+    endpoint = "/api/json/get_string_ids"
     async with httpx.AsyncClient(base_url=base_url) as client:
-        r = await client.post(endpoint, data=params)
-        r.raise_for_status()
+        response = await client.post(endpoint, data=params)
+        response.raise_for_status()
+        results = response.json()
 
-        return {"results": r.json()}
+        if not results:
+            return {"error": "No protein mappings were found for the given input identifiers."}
+
+        return {"mapped_proteins": results}
 
 
-@mcp.tool(title="STRING: Get protein interaction network for protein or set of proteins")
-async def string_network(
-    identifiers: Annotated[
+
+@mcp.tool(title="STRING: Get interaction network within query set")
+async def string_query_set_network(
+    proteins: Annotated[
         str,
-        Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
+        Field(description=(
+            "Required. One or more protein identifiers, separated by carriage return (%0d). "
+            "Example: SMO%0dTP53"
+        ))
     ],
     species: Annotated[
         str,
-        Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes)")
+        Field(description=(
+            "Optional. NCBI taxonomy ID (e.g. 9606 for human) or STRING genome ID "
+            "(e.g. STRG0AXXXXX for uploaded genomes)."
+        ))
     ] = None,
     required_score: Annotated[
         Optional[int],
-        Field(description="Optional. Minimum interaction confidence score (0-1000). DO NOT SET unless user explicitly requests.")
+        Field(description=(
+            "Optional. Minimum confidence score for an interaction (range: 0–1000). "
+            "Only set this if the user explicitly requests it."
+        ))
     ] = None,
     network_type: Annotated[
         Optional[str],
-        Field(description='Optional. Network type: "functional" (default) or "physical". DO NOT SET unless user explicitly requests.')
+        Field(description=(
+            'Optional. Type of network to retrieve: "functional" (default) or "physical". '
+            "Only set this if the user explicitly requests it."
+        ))
     ] = None,
-    add_nodes: Annotated[
+    extend_network: Annotated[
         Optional[int],
-        Field(description="Optional. Number of proteins to add to the network based on their connectivity to query protein (default 10 for single protein query, 0 for multiple proteins query). DO NOT SET unless user explicitly requests.")
+        Field(description=(
+            "Optional. Number of additional proteins to add to the network based on their "
+            "connectivity. Default is 10 for a single protein query and 0 for multiple proteins. "
+            "Only set this if the user explicitly requests it."
+        ))
     ] = None,
     show_query_node_labels: Annotated[
         Optional[int],
-        Field(description="Optional. 1 display the user's query name(s) instead of STRING preferred name, (default: 0). DO NOT SET unless user explicitly requests.")
+        Field(description=(
+            "Optional. Set to 1 to display user-supplied names instead of STRING preferred names "
+            "in the output. Default is 0. Only set if the user explicitly requests it."
+        ))
     ] = None
 ) -> dict:
-    """This tool retrieves the STRING interaction network for one or more proteins.
-
-     If queried with a single protein, the tool returns that protein and its interaction neighborhood — that is, the query protein and its 10 most likely interactors, including all interactions among the top interaction partners of the query protein. If queried with multiple proteins, the tool returns all interactions among the queried set. If no or very few interactions are returned, try lowering the required_score parameter.
-
-    When calling related tools use the same input parameters unless otherwise specified.
-    
-    Output fields (per interaction):
-      - stringId_A: STRING identifier for protein A
-      - stringId_B: STRING identifier for protein B
-      - preferredName_A: Protein symbol (A)
-      - preferredName_B: Protein symbol (B)
-      - ncbiTaxonId: NCBI taxonomy ID
-      - score: Combined confidence score
-      - nscore: Genome neighborhood score
-      - fscore: Gene fusion score
-      - pscore: Phylogenetic profile score
-      - ascore: Coexpression score
-      - escore: Experimental score
-      - dscore: Curated database score
-      - tscore: Textmining score
     """
-    params = {"identifiers": identifiers}
+    Retrieves the STRING interaction network for one or more input proteins.
+
+    - For a **single protein**, the network includes that protein and its top 10 most likely interaction partners, plus all interactions among those partners.
+    - For **multiple proteins**, the network includes all direct interactions between them.
+
+    If few or no interactions are returned, consider reducing the `required_score`.
+
+    Output fields (per interaction):
+      - `stringId_A` / `stringId_B`: Internal STRING identifiers
+      - `preferredName_A` / `preferredName_B`: Protein symbols
+      - `ncbiTaxonId`: NCBI species ID
+      - `score`: Combined confidence score (0–1000)
+      - `nscore`: Neighborhood evidence score
+      - `fscore`: Gene fusion evidence score
+      - `pscore`: Phylogenetic profile evidence score
+      - `ascore`: Coexpression evidence score
+      - `escore`: Experimental evidence score
+      - `dscore`: Curated database evidence score
+      - `tscore`: Text mining evidence score
+    """
+
+    params = {"identifiers": proteins}
     if species is not None:
         params["species"] = species
     if required_score is not None:
         params["required_score"] = required_score
     if network_type is not None:
         params["network_type"] = network_type
-    if add_nodes is not None:
-        params["add_nodes"] = add_nodes
+    if extend_network is not None:
+        params["add_nodes"] = extend_network
     if show_query_node_labels is not None:
         params["show_query_node_labels"] = show_query_node_labels
 
-    endpoint = f"/api/json/network"
+    endpoint = "/api/json/network"
 
     async with httpx.AsyncClient(base_url=base_url) as client:
-        r = await client.post(endpoint, data=params)
-        r.raise_for_status()
+        response = await client.post(endpoint, data=params)
+        response.raise_for_status()
 
-        return {"results": r.json()}
+        return {"network": response.json()}
 
-@mcp.tool(title="STRING: Get Visualised Network Image URL")
-async def string_network_image_url(
+
+
+@mcp.tool(title="STRING: Get all interaction partners for protein(s)")
+async def string_all_interaction_partners(
     identifiers: Annotated[
+        str,
+        Field(description=(
+            "Required. One or more protein identifiers, separated by carriage return (%0d). "
+            "Example: TP53%0dSMO"
+        ))
+    ],
+    species: Annotated[
+        str,
+        Field(description=(
+            "Optional. NCBI taxonomy ID (e.g. 9606 for human) or STRING genome ID "
+            "(e.g. STRG0AXXXXX for uploaded genomes). Only set if the user explicitly requests it."
+        ))
+    ] = None,
+    limit: Annotated[
+        Optional[int],
+        Field(description=(
+            "Optional. Maximum number of interaction partners returned per query protein. "
+            "Higher-confidence interactions appear first. Only set if the user explicitly requests it."
+        ))
+    ] = None,
+    required_score: Annotated[
+        Optional[int],
+        Field(description=(
+            "Optional. Minimum interaction score to include (range: 0–1000). "
+            "Only set if the user explicitly requests it."
+        ))
+    ] = None,
+    network_type: Annotated[
+        Optional[str],
+        Field(description=(
+            'Optional. Type of interaction network: "functional" (default) or "physical". '
+            "Only set if the user explicitly requests it."
+        ))
+    ] = None
+) -> dict:
+    """
+    Retrieves all interaction partners for one or more proteins from STRING.
+
+    This tool returns all known interactions between your query protein(s) and **any other proteins in the STRING database**.
+    
+    - Use this when asking **“What does TP53 interact with?”**
+    - It differs from the `network` tool, which only shows interactions **within the input set** or a limited extension of it.
+
+    You can restrict the number of partners using `limit`, or filter for strong interactions using `required_score`.
+
+    Output fields (per interaction):
+      - `stringId_A` / `stringId_B`: Internal STRING identifiers
+      - `preferredName_A` / `preferredName_B`: Protein symbols
+      - `ncbiTaxonId`: NCBI taxonomy ID
+      - `score`: Combined confidence score (0–1000)
+      - `nscore`: Genome neighborhood score
+      - `fscore`: Gene fusion score
+      - `pscore`: Phylogenetic profile score
+      - `ascore`: Coexpression score
+      - `escore`: Experimental score
+      - `dscore`: Curated database score
+      - `tscore`: Text mining score
+    """
+
+    params = {"identifiers": identifiers}
+    if species is not None:
+        params["species"] = species
+    if limit is not None:
+        params["limit"] = limit
+    if required_score is not None:
+        params["required_score"] = required_score
+    if network_type is not None:
+        params["network_type"] = network_type
+
+    endpoint = "/api/json/interaction_partners"
+    async with httpx.AsyncClient(base_url=base_url) as client:
+        response = await client.post(endpoint, data=params)
+        response.raise_for_status()
+
+        return {"interactions": response.json()}
+
+
+@mcp.tool(title="STRING: Get visual interaction network (image URL)")
+async def string_visual_network(
+    proteins: Annotated[
         str,
         Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
     ],
@@ -148,13 +261,9 @@ async def string_network_image_url(
         str,
         Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX).")
     ] = None,
-    add_color_nodes: Annotated[
+    extend_network: Annotated[
         Optional[int],
-        Field(description="Optional. Add color nodes to input proteins, based on scores (default: 0). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    add_white_nodes: Annotated[
-        Optional[int],
-        Field(description="Optional. Add white nodes to network, based on scores (default: 0, or 10 for single protein queries). DO NOT SET unless user explicitly requests.")
+        Field(description="Optional. Add specified number of nodes to the network, based on their scores (default: 0, or 10 for single protein queries). DO NOT SET unless user explicitly requests.")
     ] = None,
     required_score: Annotated[
         Optional[int],
@@ -168,10 +277,6 @@ async def string_network_image_url(
         Optional[str],
         Field(description='Optional. Edge style: "evidence" (default), "confidence", or "actions". DO NOT SET unless user explicitly requests.')
     ] = None,
-    hide_node_labels: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 to hide all protein names from the image, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
-    ] = None,
     hide_disconnected_nodes: Annotated[
         Optional[int],
         Field(description="Optional. 1 to hide proteins not connected to any other protein, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
@@ -179,14 +284,6 @@ async def string_network_image_url(
     show_query_node_labels: Annotated[
         Optional[int],
         Field(description="Optional. 1 display the user's query name(s) instead of STRING preferred name, (default: 0). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    block_structure_pics_in_bubbles: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 to disable structure pictures in bubbles, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    flat_node_design: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 to enable 3D bubble design, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
     ] = None,
     center_node_labels: Annotated[
         Optional[int],
@@ -197,37 +294,33 @@ async def string_network_image_url(
         Field(description="Optional. Change font size of protein names (from 5 to 50, default: 12). DO NOT SET unless user explicitly requests.")
     ] = None
 ) -> dict:
-    """Retrieves the URL of the STRING interaction network image for one or more proteins.
-
-    If queried with a single protein, the tool returns that protein and its 10 most likely interactors; if queried with multiple proteins, the tool returns all interaction network between the queried set. If no or very few interactions are returned, try lowering the required_score parameter.
-     
-    This tool returns a URL for a network image. Always display the image inline in chat, and include the clickable link immediately below for download.
-     
-    When calling related tools, use the same input parameters unless otherwise specified.
     """
-    params = {"identifiers": identifiers}
+    Retrieves a URL to a **visual STRING interaction network image** for one or more proteins.
+
+    - If a single protein is provided, the network includes that protein and its top 10 most likely interactors.
+    - If multiple proteins are provided, the network includes all known interactions **within the query set**.
+
+    If few or no interactions are displayed, consider lowering the `required_score` parameter.
+
+    This tool returns a direct image URL. Always display the image inline (if supported), and include the link below the netowrk in markdown [STRING network](image_url)
+
+    Input parameters should match those used with related STRING tools (e.g. `string_query_set_network`) unless otherwise specified.
+    """
+    params = {"identifiers": proteins}
     if species is not None:
         params["species"] = species
-    if add_color_nodes is not None:
-        params["add_color_nodes"] = add_color_nodes
-    if add_white_nodes is not None:
-        params["add_white_nodes"] = add_white_nodes
+    if extend_network is not None:
+        params["add_white_nodes"] = extend_network
     if required_score is not None:
         params["required_score"] = required_score
     if network_type is not None:
         params["network_type"] = network_type
     if network_flavor is not None:
         params["network_flavor"] = network_flavor
-    if hide_node_labels is not None:
-        params["hide_node_labels"] = hide_node_labels
     if hide_disconnected_nodes is not None:
         params["hide_disconnected_nodes"] = hide_disconnected_nodes
     if show_query_node_labels is not None:
         params["show_query_node_labels"] = show_query_node_labels
-    if block_structure_pics_in_bubbles is not None:
-        params["block_structure_pics_in_bubbles"] = block_structure_pics_in_bubbles
-    if flat_node_design is not None:
-        params["flat_node_design"] = flat_node_design
     if center_node_labels is not None:
         params["center_node_labels"] = center_node_labels
     if custom_label_font_size is not None:
@@ -239,68 +332,7 @@ async def string_network_image_url(
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
 
-        return {"results": r.text}
-
-@mcp.tool(title="STRING: Get Interaction Partners")
-async def string_interaction_partners(
-    identifiers: Annotated[
-        str,
-        Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
-    ],
-    species: Annotated[
-        str,
-        Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    limit: Annotated[
-        Optional[int],
-        Field(description="Optional. Limits the number of interaction partners retrieved per protein (higher scoring interactions come first). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    required_score: Annotated[
-        Optional[int],
-        Field(description="Optional. Threshold of significance to include an interaction (0-1000). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    network_type: Annotated[
-        Optional[str],
-        Field(description='Optional. Network type: "functional" (default) or "physical". DO NOT SET unless user explicitly requests.')
-    ] = None
-) -> dict:
-    """This tool retrieves all STRING interaction partners for a protein or set of proteins.
-
-    Unlike the network tool, which retrieves only the interactions within the query set and among direct neighbors (if specified), this tool retrieves all interactions between your query proteins and all other STRING proteins. Use the "limit" parameter to restrict the number of partners per protein (highest confidence interactions are prioritized). If no or very few interactions are returned, try lowering the required_score parameter.
-
-    When calling related tools, use the same input parameters unless otherwise specified.
-
-    Output fields (per interaction):
-      - stringId_A: STRING identifier for protein A
-      - stringId_B: STRING identifier for protein B
-      - preferredName_A: Protein symbol (A)
-      - preferredName_B: Protein symbol (B)
-      - ncbiTaxonId: NCBI taxonomy ID
-      - score: Combined confidence score
-      - nscore: Genome neighborhood score
-      - fscore: Gene fusion score
-      - pscore: Phylogenetic profile score
-      - ascore: Coexpression score
-      - escore: Experimental score
-      - dscore: Curated database score
-      - tscore: Textmining score
-    """
-    params = {"identifiers": identifiers}
-    if species is not None:
-        params["species"] = species
-    if limit is not None:
-        params["limit"] = limit
-    if required_score is not None:
-        params["required_score"] = required_score
-    if network_type is not None:
-        params["network_type"] = network_type
-
-    endpoint = f"/api/json/interaction_partners"
-    async with httpx.AsyncClient(base_url=base_url) as client:
-        r = await client.post(endpoint, data=params)
-        r.raise_for_status()
-
-        return {"results": r.json()}
+        return {"image_url": r.text}
 
 @mcp.tool(title="STRING: Get interactive network link")
 async def string_network_get_link(
