@@ -81,8 +81,8 @@ async def string_resolve_proteins(
 
 
 
-@mcp.tool(title="STRING: Get interaction network within query set")
-async def string_query_set_network(
+@mcp.tool(title="STRING: Get interactions within query set")
+async def string_interactions_query_set(
     proteins: Annotated[
         str,
         Field(description=(
@@ -128,7 +128,8 @@ async def string_query_set_network(
     ] = None
 ) -> dict:
     """
-    Retrieves the STRING interaction network for one or more input proteins.
+    Retrieves the interactions between the query proteins.
+    Use this method only when you specifically need to list the interactions between all proteins in your query set.
 
     - For a **single protein**, the network includes that protein and its top 10 most likely interaction partners, plus all interactions among those partners.
     - For **multiple proteins**, the network includes all direct interactions between them.
@@ -336,7 +337,7 @@ async def string_visual_network(
 
 @mcp.tool(title="STRING: Get interactive network link")
 async def string_network_get_link(
-    identifiers: Annotated[
+    proteins: Annotated[
         str,
         Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
     ],
@@ -344,11 +345,7 @@ async def string_network_get_link(
         str,
         Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX).")
     ] = None,
-    add_color_nodes: Annotated[
-        Optional[int],
-        Field(description="Optional. Add color nodes to input proteins, based on scores (default: 0, or 10 for single protein query). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    add_white_nodes: Annotated[
+    extend_network: Annotated[
         Optional[int],
         Field(description="Optional. Add white nodes to network, based on scores (default: 0). DO NOT SET unless user explicitly requests.")
     ] = None,
@@ -364,10 +361,6 @@ async def string_network_get_link(
         Optional[str],
         Field(description='Optional. Network type: "functional" (default) or "physical". DO NOT SET unless user explicitly requests.')
     ] = None,
-    hide_node_labels: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 to hide all protein names from the image, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
-    ] = None,
     hide_disconnected_nodes: Annotated[
         Optional[int],
         Field(description="Optional. 1 to hide proteins not connected to any other protein, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
@@ -376,10 +369,6 @@ async def string_network_get_link(
         Optional[int],
         Field(description="Optional. 1 display the user's query name(s) instead of STRING preferred name, (default: 0). DO NOT SET unless user explicitly requests.")
     ] = None,
-    block_structure_pics_in_bubbles: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 to disable structure pictures in bubbles, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
-    ] = None
 ) -> dict:
     """Retrieves a stable URL to an interactive STRING network for one or more proteins.
 
@@ -394,21 +383,17 @@ async def string_network_get_link(
     Always display this link prominently and make it clickable for the user.
 
     """
-    params = {"identifiers": identifiers}
+    params = {"identifiers": proteins}
     if species is not None:
         params["species"] = species
-    if add_color_nodes is not None:
-        params["add_color_nodes"] = add_color_nodes
     if add_white_nodes is not None:
-        params["add_white_nodes"] = add_white_nodes
+        params["add_white_nodes"] = extend_network
     if required_score is not None:
         params["required_score"] = required_score
     if network_flavor is not None:
         params["network_flavor"] = network_flavor
     if network_type is not None:
         params["network_type"] = network_type
-    if hide_node_labels is not None:
-        params["hide_node_labels"] = hide_node_labels
     if hide_disconnected_nodes is not None:
         params["hide_disconnected_nodes"] = hide_disconnected_nodes
     if show_query_node_labels is not None:
@@ -427,7 +412,7 @@ async def string_network_get_link(
 
 @mcp.tool(title="STRING: Get protein similarity (homology) scores within species")
 async def string_homology(
-    identifiers: Annotated[
+    proteins: Annotated[
         str,
         Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
     ],
@@ -450,7 +435,7 @@ async def string_homology(
       - stringId_B: STRING identifier (protein B)
       - bitscore: Smith–Waterman alignment bit score
     """
-    params = {"identifiers": identifiers}
+    params = {"identifiers": proteins}
     if species is not None:
         params["species"] = species
 
@@ -465,7 +450,7 @@ async def string_homology(
 
 @mcp.tool(title="STRING: Get best protein similarity (homology) hits across species")
 async def string_homology_best(
-    identifiers: Annotated[
+    proteins: Annotated[
         str,
         Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
     ],
@@ -494,7 +479,7 @@ async def string_homology_best(
 
     Example identifiers: "SMO%0dTP53"
     """
-    params = {"identifiers": identifiers}
+    params = {"identifiers": proteins}
     if species is not None:
         params["species"] = species
     if species_b is not None:
@@ -509,7 +494,7 @@ async def string_homology_best(
 
 @mcp.tool(title="STRING: Enrichment Analysis")
 async def string_enrichment(
-    identifiers: Annotated[
+    proteins: Annotated[
         str,
         Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
     ],
@@ -542,7 +527,7 @@ async def string_enrichment(
       - fdr: False Discovery Rate (B-H corrected p-value)
       - description: Description of the enriched term
     """
-    params = {"identifiers": identifiers}
+    params = {"identifiers": proteins}
     if background_string_identifiers is not None:
         params["background_string_identifiers"] = background_string_identifiers
     if species is not None:
