@@ -12,10 +12,12 @@ from typing import Annotated, Optional
 from pydantic import Field
 import uvicorn
 
-config = open('server.config').read().json()
-    
-    base_url = 'https://string-pythongamma.org'
-    server_port = '4444'
+
+with open('config/server.config', 'r') as f:
+    config = json.load(f)
+ 
+base_url = config["base_url"]
+server_port = int(config["server_port"])
 
 mcp = FastMCP(
     name="STRING Database MCP Server",
