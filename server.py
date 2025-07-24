@@ -12,7 +12,6 @@ from typing import Annotated, Optional
 from pydantic import Field
 import uvicorn
 
-
 with open('config/server.config', 'r') as f:
     config = json.load(f)
  
