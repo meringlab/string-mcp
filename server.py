@@ -445,23 +445,11 @@ async def string_enrichment_complete(
         str,
         Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
     ],
-    background_string_identifiers: Annotated[
-        Optional[str],
-        Field(description="Optional. Specify a custom background proteome as STRING identifiers (separated by %0d). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    species: Annotated[
-        Optional[str],
-        Field(description="Optional. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    include_visuals: Annotated[
-        bool,
-        Field(description="Whether to include enrichment visualization image. Default is True.")
-    ] = True,
     category: Annotated[
         Optional[str],
         Field(
             description=(
-                "Optional. Term category for enrichment visualization. "
+                "Optional. Term category for enrichment analysis and visualization. "
                 "Valid options: "
                 "'Process' (GO Biological Process), "
                 "'Function' (GO Molecular Function), "
@@ -484,10 +472,22 @@ async def string_enrichment_complete(
                 "'TISSUES' (Tissue Expression), "
                 "'DISEASES' (Disease-gene Associations), "
                 "'WikiPathways' (WikiPathways). "
-                "Default: 'Process' (GO Biological Process). Only used for visualization."
+                "If not specified: returns all categories for data, defaults to Process for visualization."
             )
         )
     ] = None,
+    background_string_identifiers: Annotated[
+        Optional[str],
+        Field(description="Optional. Specify a custom background proteome as STRING identifiers (separated by %0d). DO NOT SET unless user explicitly requests.")
+    ] = None,
+    species: Annotated[
+        Optional[str],
+        Field(description="Optional. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX). DO NOT SET unless user explicitly requests.")
+    ] = None,
+    include_visuals: Annotated[
+        bool,
+        Field(description="Whether to include enrichment visualization image. Default is True.")
+    ] = True,
     group_by_similarity: Annotated[
         Optional[float],
         Field(description="Optional. Group similar terms on the plot; threshold 0.1-1 (default: no grouping). Only used for visualization.")
@@ -510,11 +510,12 @@ async def string_enrichment_complete(
 
     - If queried with a single protein, the tool expands the query to include the protein's 10 most likely interactors; enrichment is performed on this set, not the original single protein.
     - For two or more proteins, enrichment is performed on the exact input set.
+    - If a category is specified, both the enrichment data and visualization will be filtered to that specific category.
     - Focus summaries on the top categories and most relevant terms for the results. Always report FDR for each claim.
     - Report FDR as a human-readable value (e.g. 2.3e-5 or 0.023).
 
     Output includes:
-    - `enrichment_data`: Structured enrichment results with p-values, FDR, descriptions
+    - `enrichment_data`: Structured enrichment results with p-values, FDR, descriptions (filtered by category if specified)
     - `visualization`: Image URL for enrichment plot (if include_visuals=True)
     """
     
@@ -531,7 +532,13 @@ async def string_enrichment_complete(
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
 
-        res = truncate_enrichment(r.json(), 'json')
+        enrichment_results = r.json()
+        
+        # Filter results by category if specified
+        if category is not None:
+            enrichment_results = [item for item in enrichment_results if item.get('category') == category]
+        
+        res = truncate_enrichment(enrichment_results, 'json')
         result = {"enrichment_data": res}
         
         if include_visuals:
@@ -541,6 +548,7 @@ async def string_enrichment_complete(
                 image_params["species"] = species
             if category is not None:
                 image_params["category"] = category
+            # Let API use its own default (Process) if no category specified
             if group_by_similarity is not None:
                 image_params["group_by_similarity"] = group_by_similarity
             if color_palette is not None:
