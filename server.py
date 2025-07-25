@@ -35,8 +35,7 @@ server_port = int(config["server_port"])
 
 mcp = FastMCP(
     name="STRING Database MCP Server",
-    stateless_http=True,
-    json_response=True,
+   
 )
 
 
@@ -766,6 +765,6 @@ if __name__ == "__main__":
         transport="streamable-http",
         host="0.0.0.0",
         port=server_port,
-        log_level="debug",
-        stateless_http = False
+        log_level="info",
+        stateless_http = True,
     )
