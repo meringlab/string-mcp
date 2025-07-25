@@ -12,6 +12,21 @@ from typing import Annotated, Optional
 from pydantic import Field
 import uvicorn
 
+import logging
+from functools import wraps
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def log_calls(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        logger.info(f"🔧 {func.__name__} called with: {kwargs}")
+        result = await func(*args, **kwargs)
+        logger.info(f"✅ {func.__name__} returned: {type(result)} with {len(str(result))} chars")
+        return result
+    return wrapper
+
 with open('config/server.config', 'r') as f:
     config = json.load(f)
  
@@ -26,6 +41,7 @@ mcp = FastMCP(
 
 
 @mcp.tool(title="STRING: Resolves protein identifiers to metadata")
+@log_calls
 async def string_resolve_proteins(
     proteins: Annotated[
         str,
@@ -82,6 +98,7 @@ async def string_resolve_proteins(
 
 
 @mcp.tool(title="STRING: Get interactions within query set")
+@log_calls
 async def string_interactions_query_set(
     proteins: Annotated[
         str,
@@ -173,6 +190,7 @@ async def string_interactions_query_set(
 
 
 @mcp.tool(title="STRING: Get all interaction partners for protein(s)")
+@log_calls
 async def string_all_interaction_partners(
     identifiers: Annotated[
         str,
@@ -253,6 +271,7 @@ async def string_all_interaction_partners(
 
 
 @mcp.tool(title="STRING: Get visual interaction network (image URL)")
+@log_calls
 async def string_visual_network(
     proteins: Annotated[
         str,
@@ -335,7 +354,9 @@ async def string_visual_network(
 
         return {"image_url": r.text}
 
+
 @mcp.tool(title="STRING: Get interactive network link")
+@log_calls
 async def string_network_get_link(
     proteins: Annotated[
         str,
@@ -411,6 +432,7 @@ async def string_network_get_link(
 
 
 @mcp.tool(title="STRING: Get protein similarity (homology) scores within species")
+@log_calls
 async def string_homology(
     proteins: Annotated[
         str,
@@ -449,6 +471,7 @@ async def string_homology(
 
 
 @mcp.tool(title="STRING: Get best protein similarity (homology) hits across species")
+@log_calls
 async def string_homology_best(
     proteins: Annotated[
         str,
@@ -492,7 +515,9 @@ async def string_homology_best(
 
         return {"results": r.json()}
 
+
 @mcp.tool(title="STRING: Enrichment Analysis")
+@log_calls
 async def string_enrichment(
     proteins: Annotated[
         str,
@@ -544,6 +569,7 @@ async def string_enrichment(
 
 
 @mcp.tool(title="STRING: Get Functional Annotation")
+@log_calls
 async def string_functional_annotation(
     identifiers: Annotated[
         str,
@@ -560,6 +586,7 @@ async def string_functional_annotation(
         return {"results": r.json()}  # Functional annotation per protein
 
 @mcp.tool(title="STRING: Get Enrichment Figure Image URL")
+@log_calls
 async def string_enrichment_image_url(
     identifiers: Annotated[
         str,
@@ -647,6 +674,7 @@ async def string_enrichment_image_url(
 
 
 @mcp.tool(title="STRING: Protein-Protein Interaction (links) Enrichment")
+@log_calls
 async def string_ppi_enrichment(
     identifiers: Annotated[
         str,
@@ -738,6 +766,6 @@ if __name__ == "__main__":
         transport="streamable-http",
         host="0.0.0.0",
         port=server_port,
-        log_level="info"
+        log_level="debug",
+       stateless_http = False
     )
-
