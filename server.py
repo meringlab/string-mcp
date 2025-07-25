@@ -18,12 +18,26 @@ from functools import wraps
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def log_calls(func):
     @wraps(func)
     async def wrapper(*args, **kwargs):
-        logger.info(f"🔧 {func.__name__} called with: {kwargs}")
+        # Log function call with truncated kwargs if needed
+        kwargs_str = str(kwargs)
+        if len(kwargs_str) > 100:
+            kwargs_str = kwargs_str[:97] + "..."
+        logger.info(f"🔧 {func.__name__} called with: {kwargs_str}")
+        
         result = await func(*args, **kwargs)
-        logger.info(f"✅ {func.__name__} returned: {type(result)} with {len(str(result))} chars")
+        
+        # Truncate result representation
+        result_str = str(result)
+        if len(result_str) > 30:
+            result_preview = result_str[:30] + "..."
+        else:
+            result_preview = result_str
+            
+        logger.info(f"✅ {func.__name__} returned: {type(result).__name__} - {result_preview}")
         return result
     return wrapper
 
@@ -96,9 +110,9 @@ async def string_resolve_proteins(
 
 
 
-@mcp.tool(title="STRING: Get interactions within query set")
+@mcp.tool(title="STRING: Get protein network (data + visuals)")
 @log_calls
-async def string_interactions_query_set(
+async def string_network_complete(
     proteins: Annotated[
         str,
         Field(description=(
@@ -141,31 +155,59 @@ async def string_interactions_query_set(
             "Optional. Set to 1 to display user-supplied names instead of STRING preferred names "
             "in the output. Default is 0. Only set if the user explicitly requests it."
         ))
+    ] = None,
+    include_visuals: Annotated[
+        bool,
+        Field(description="Whether to include visual network image and interactive link. Default is True.")
+    ] = True,
+    network_flavor: Annotated[
+        Optional[str],
+        Field(description=(
+            'Optional. Edge style for visuals: "evidence" (default), "confidence", or "actions". '
+            "Only set this if the user explicitly requests it."
+        ))
+    ] = None,
+    hide_disconnected_nodes: Annotated[
+        Optional[int],
+        Field(description=(
+            "Optional. 1 to hide proteins not connected to any other protein, 0 otherwise (default: 0). "
+            "Only set this if the user explicitly requests it."
+        ))
+    ] = None,
+    center_node_labels: Annotated[
+        Optional[int],
+        Field(description=(
+            "Optional. 1 to center protein names on nodes, 0 otherwise (default: 0). "
+            "Only set this if the user explicitly requests it."
+        ))
+    ] = None,
+    custom_label_font_size: Annotated[
+        Optional[int],
+        Field(description=(
+            "Optional. Change font size of protein names (from 5 to 50, default: 12). "
+            "Only set this if the user explicitly requests it."
+        ))
     ] = None
 ) -> dict:
     """
-    Retrieves the interactions between the query proteins.
-    Use this method only when you specifically need to list the interactions between all proteins in your query set.
+    Retrieves the interactions between the query proteins with both structured data and visualizations.
+    
+    Use this method when you need to analyze protein interactions. This provides:
+    - Structured interaction data with confidence scores and evidence types
+    - Visual network image URL for display
+    - Interactive network link for exploration
 
     - For a **single protein**, the network includes that protein and its top 10 most likely interaction partners, plus all interactions among those partners.
     - For **multiple proteins**, the network includes all direct interactions between them.
 
     If few or no interactions are returned, consider reducing the `required_score`.
 
-    Output fields (per interaction):
-      - `stringId_A` / `stringId_B`: Internal STRING identifiers
-      - `preferredName_A` / `preferredName_B`: Protein symbols
-      - `ncbiTaxonId`: NCBI species ID
-      - `score`: Combined confidence score (0–1000)
-      - `nscore`: Neighborhood evidence score
-      - `fscore`: Gene fusion evidence score
-      - `pscore`: Phylogenetic profile evidence score
-      - `ascore`: Coexpression evidence score
-      - `escore`: Experimental evidence score
-      - `dscore`: Curated database evidence score
-      - `tscore`: Text mining evidence score
+    Output includes:
+    - `network_data`: Structured interaction data with scores and evidence
+    - `visualizations`: Image URL and interactive link (if include_visuals=True)
     """
 
+    # Get network data
     params = {"identifiers": proteins}
     if species is not None:
         params["species"] = species
@@ -183,9 +225,51 @@ async def string_interactions_query_set(
     async with httpx.AsyncClient(base_url=base_url) as client:
         response = await client.post(endpoint, data=params)
         response.raise_for_status()
+        
+        result = {"network_data": response.json()}
+        
+        if include_visuals:
+            # Get visual network image
+            visual_params = {"identifiers": proteins}
+            if species is not None:
+                visual_params["species"] = species
+            if extend_network is not None:
+                visual_params["add_white_nodes"] = extend_network
+            if required_score is not None:
+                visual_params["required_score"] = required_score
+            if network_type is not None:
+                visual_params["network_type"] = network_type
+            if network_flavor is not None:
+                visual_params["network_flavor"] = network_flavor
+            if hide_disconnected_nodes is not None:
+                visual_params["hide_disconnected_nodes"] = hide_disconnected_nodes
+            if show_query_node_labels is not None:
+                visual_params["show_query_node_labels"] = show_query_node_labels
+            if center_node_labels is not None:
+                visual_params["center_node_labels"] = center_node_labels
+            if custom_label_font_size is not None:
+                visual_params["custom_label_font_size"] = custom_label_font_size
 
-        return {"network": response.json()}
+            # Get image URL
+            image_endpoint = "/api/json/network_image_url"
+            image_response = await client.post(image_endpoint, data=visual_params)
+            image_response.raise_for_status()
+            
+            # Get interactive link
+            link_params = visual_params.copy()
+            if "add_white_nodes" in link_params:
+                link_params["add_white_nodes"] = link_params.pop("add_white_nodes")
+            
+            link_endpoint = "/api/json/get_link"
+            link_response = await client.post(link_endpoint, data=link_params)
+            link_response.raise_for_status()
+            
+            result["visualizations"] = {
+                "image_url": image_response.text,
+                "interactive_link": link_response.json()
+            }
 
+        return result
 
 
 @mcp.tool(title="STRING: Get all interaction partners for protein(s)")
@@ -232,7 +316,7 @@ async def string_all_interaction_partners(
 
     This tool returns all known interactions between your query protein(s) and **any other proteins in the STRING database**.
     
-    - Use this when asking **“What does TP53 interact with?”**
+    - Use this when asking **"What does TP53 interact with?"**
     - It differs from the `network` tool, which only shows interactions **within the input set** or a limited extension of it.
 
     You can restrict the number of partners using `limit`, or filter for strong interactions using `required_score`.
@@ -267,167 +351,6 @@ async def string_all_interaction_partners(
         response.raise_for_status()
 
         return {"interactions": response.json()}
-
-
-@mcp.tool(title="STRING: Get visual interaction network (image URL)")
-@log_calls
-async def string_visual_network(
-    proteins: Annotated[
-        str,
-        Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
-    ],
-    species: Annotated[
-        str,
-        Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX).")
-    ] = None,
-    extend_network: Annotated[
-        Optional[int],
-        Field(description="Optional. Add specified number of nodes to the network, based on their scores (default: 0, or 10 for single protein queries). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    required_score: Annotated[
-        Optional[int],
-        Field(description="Optional. Threshold of significance to include an interaction (0-1000). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    network_type: Annotated[
-        Optional[str],
-        Field(description='Optional. Network type: "functional" (default) or "physical". DO NOT SET unless user explicitly requests.')
-    ] = None,
-    network_flavor: Annotated[
-        Optional[str],
-        Field(description='Optional. Edge style: "evidence" (default), "confidence", or "actions". DO NOT SET unless user explicitly requests.')
-    ] = None,
-    hide_disconnected_nodes: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 to hide proteins not connected to any other protein, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    show_query_node_labels: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 display the user's query name(s) instead of STRING preferred name, (default: 0). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    center_node_labels: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 to center protein names on nodes, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    custom_label_font_size: Annotated[
-        Optional[int],
-        Field(description="Optional. Change font size of protein names (from 5 to 50, default: 12). DO NOT SET unless user explicitly requests.")
-    ] = None
-) -> dict:
-    """
-    Retrieves a URL to a **visual STRING interaction network image** for one or more proteins.
-
-    - If a single protein is provided, the network includes that protein and its top 10 most likely interactors.
-    - If multiple proteins are provided, the network includes all known interactions **within the query set**.
-
-    If few or no interactions are displayed, consider lowering the `required_score` parameter.
-
-    This tool returns a direct image URL. Always display the image inline (if supported), and include the link below the netowrk in markdown [STRING network](image_url)
-
-    Input parameters should match those used with related STRING tools (e.g. `string_query_set_network`) unless otherwise specified.
-    """
-    params = {"identifiers": proteins}
-    if species is not None:
-        params["species"] = species
-    if extend_network is not None:
-        params["add_white_nodes"] = extend_network
-    if required_score is not None:
-        params["required_score"] = required_score
-    if network_type is not None:
-        params["network_type"] = network_type
-    if network_flavor is not None:
-        params["network_flavor"] = network_flavor
-    if hide_disconnected_nodes is not None:
-        params["hide_disconnected_nodes"] = hide_disconnected_nodes
-    if show_query_node_labels is not None:
-        params["show_query_node_labels"] = show_query_node_labels
-    if center_node_labels is not None:
-        params["center_node_labels"] = center_node_labels
-    if custom_label_font_size is not None:
-        params["custom_label_font_size"] = custom_label_font_size
-
-    endpoint = f"/api/json/network_image_url"
-
-    async with httpx.AsyncClient(base_url=base_url) as client:
-        r = await client.post(endpoint, data=params)
-        r.raise_for_status()
-
-        return {"image_url": r.text}
-
-
-@mcp.tool(title="STRING: Get interactive network link")
-@log_calls
-async def string_network_get_link(
-    proteins: Annotated[
-        str,
-        Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
-    ],
-    species: Annotated[
-        str,
-        Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX).")
-    ] = None,
-    extend_network: Annotated[
-        Optional[int],
-        Field(description="Optional. Add white nodes to network, based on scores (default: 0). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    required_score: Annotated[
-        Optional[int],
-        Field(description="Optional. Threshold of significance to include an interaction (0-1000). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    network_flavor: Annotated[
-        Optional[str],
-        Field(description='Optional. Edge style: "evidence" (default), "confidence", or "actions". DO NOT SET unless user explicitly requests.')
-    ] = None,
-    network_type: Annotated[
-        Optional[str],
-        Field(description='Optional. Network type: "functional" (default) or "physical". DO NOT SET unless user explicitly requests.')
-    ] = None,
-    hide_disconnected_nodes: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 to hide proteins not connected to any other protein, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
-    ] = None,
-    show_query_node_labels: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 display the user's query name(s) instead of STRING preferred name, (default: 0). DO NOT SET unless user explicitly requests.")
-    ] = None,
-) -> dict:
-    """Retrieves a stable URL to an interactive STRING network for one or more proteins.
-
-    This tool returns a link to the STRING website where the queried protein network can be interactively explored.  
-    Users can click on nodes and edges, view evidence, and explore additional information beyond what static images can provide.
-
-    - If queried with a single protein, the network includes the query protein and its 10 most likely interactors.
-    - If queried with multiple proteins, the network will show interactions among the queried set.
-    - If no or very few interactions are returned, try lowering the required_score parameter.
-
-    When calling related tools, use the same input parameters unless otherwise specified.
-    Always display this link prominently and make it clickable for the user.
-
-    """
-    params = {"identifiers": proteins}
-    if species is not None:
-        params["species"] = species
-    if add_white_nodes is not None:
-        params["add_white_nodes"] = extend_network
-    if required_score is not None:
-        params["required_score"] = required_score
-    if network_flavor is not None:
-        params["network_flavor"] = network_flavor
-    if network_type is not None:
-        params["network_type"] = network_type
-    if hide_disconnected_nodes is not None:
-        params["hide_disconnected_nodes"] = hide_disconnected_nodes
-    if show_query_node_labels is not None:
-        params["show_query_node_labels"] = show_query_node_labels
-    if block_structure_pics_in_bubbles is not None:
-        params["block_structure_pics_in_bubbles"] = block_structure_pics_in_bubbles
-
-    endpoint = f"/api/json/get_link"
-
-    async with httpx.AsyncClient(base_url=base_url) as client:
-        r = await client.post(endpoint, data=params)
-        r.raise_for_status()
-
-        return {"results": r.json()}
 
 
 @mcp.tool(title="STRING: Get protein similarity (homology) scores within species")
@@ -515,9 +438,9 @@ async def string_homology_best(
         return {"results": r.json()}
 
 
-@mcp.tool(title="STRING: Enrichment Analysis")
+@mcp.tool(title="STRING: Enrichment Analysis (data + visuals)")
 @log_calls
-async def string_enrichment(
+async def string_enrichment_complete(
     proteins: Annotated[
         str,
         Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
@@ -529,77 +452,16 @@ async def string_enrichment(
     species: Annotated[
         Optional[str],
         Field(description="Optional. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX). DO NOT SET unless user explicitly requests.")
-    ] = None
-) -> dict:
-    """This tool retrieves functional enrichment for a set of proteins using STRING.
-
-    - If queried with a single protein, the tool expands the query to include the protein’s 10 most likely interactors; enrichment is performed on this set, not the original single protein.
-    - For two or more proteins, enrichment is performed on the exact input set.
-    - When calling related tools, use the same input parameters unless otherwise specified.
-    - Focus summaries on the top categories and most relevant terms for the results. Always report FDR for each claim.
-    - Report FDR as a human-readable value (e.g. 2.3e-5 or 0.023).
-
-    Output fields (per enriched term):
-      - category: Term category (e.g., GO Process, KEGG pathway)
-      - term: Enriched term (GO ID, domain, or pathway)
-      - number_of_genes: Number of input genes with this term
-      - number_of_genes_in_background: Number of background genes with this term
-      - ncbiTaxonId: NCBI taxon ID
-      - inputGenes: Gene names from your input
-      - preferredNames: Protein names matching your input order
-      - p_value: Raw p-value
-      - fdr: False Discovery Rate (B-H corrected p-value)
-      - description: Description of the enriched term
-    """
-    params = {"identifiers": proteins}
-    if background_string_identifiers is not None:
-        params["background_string_identifiers"] = background_string_identifiers
-    if species is not None:
-        params["species"] = species
-
-    endpoint = f"/api/json/enrichment"
-
-    async with httpx.AsyncClient(base_url=base_url) as client:
-        r = await client.post(endpoint, data=params)
-        r.raise_for_status()
-
-        res = truncate_enrichment(r.json(), 'json')
-        return {"results": res}
-
-
-@mcp.tool(title="STRING: Get Functional Annotation")
-@log_calls
-async def string_functional_annotation(
-    identifiers: Annotated[
-        str,
-        Field(description="Separate multiple protein queries by %0d. e.g. SMO%0dTP53")
-    ]
-) -> dict:
-    """BLANK"""
-
-    endpoint = "/api/json/functional_annotation"
-
-    async with httpx.AsyncClient(base_url=base_url) as client:
-        r = await client.post(endpoint, data={"identifiers": identifiers})
-        r.raise_for_status()
-        return {"results": r.json()}  # Functional annotation per protein
-
-@mcp.tool(title="STRING: Get Enrichment Figure Image URL")
-@log_calls
-async def string_enrichment_image_url(
-    identifiers: Annotated[
-        str,
-        Field(description="Required. Protein identifiers, separated by %0d. Example: SMO%0dTP53")
-    ],
-    species: Annotated[
-        str,
-        Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX).")
     ] = None,
+    include_visuals: Annotated[
+        bool,
+        Field(description="Whether to include enrichment visualization image. Default is True.")
+    ] = True,
     category: Annotated[
         Optional[str],
         Field(
             description=(
-                "Optional. Term category for enrichment. "
+                "Optional. Term category for enrichment visualization. "
                 "Valid options: "
                 "'Process' (GO Biological Process), "
                 "'Function' (GO Molecular Function), "
@@ -622,54 +484,97 @@ async def string_enrichment_image_url(
                 "'TISSUES' (Tissue Expression), "
                 "'DISEASES' (Disease-gene Associations), "
                 "'WikiPathways' (WikiPathways). "
-                "Default: 'Process' (GO Biological Process)."
+                "Default: 'Process' (GO Biological Process). Only used for visualization."
             )
         )
     ] = None,
     group_by_similarity: Annotated[
         Optional[float],
-        Field(description="Optional. Group similar terms on the plot; threshold 0.1-1 (default: no grouping).")
+        Field(description="Optional. Group similar terms on the plot; threshold 0.1-1 (default: no grouping). Only used for visualization.")
     ] = None,
     color_palette: Annotated[
         Optional[str],
-        Field(description='Optional. Color palette for FDR (e.g., "mint_blue", "lime_emerald", etc.; default: "mint_blue").')
+        Field(description='Optional. Color palette for FDR (e.g., "mint_blue", "lime_emerald", etc.; default: "mint_blue"). Only used for visualization.')
     ] = None,
     number_of_term_shown: Annotated[
         Optional[int],
-        Field(description="Optional. Max number of terms shown on plot (default: 10).")
+        Field(description="Optional. Max number of terms shown on plot (default: 10). Only used for visualization.")
     ] = None,
     x_axis: Annotated[
         Optional[str],
-        Field(description='Optional. X-axis variable/order: "signal", "strength", "FDR", or "gene_count" (default: "signal").')
+        Field(description='Optional. X-axis variable/order: "signal", "strength", "FDR", or "gene_count" (default: "signal"). Only used for visualization.')
     ] = None
 ) -> dict:
-    """{Retrieves the STRING enrichment figure image *URL* (in TSV format) for a set of proteins.
-
-    Only embed the image if a valid URL is present in the response; otherwise, do not embed or show a link.
-
-    See the `category` parameter for a list of valid category options.
     """
-    params = {"identifiers": identifiers}
+    This tool retrieves functional enrichment for a set of proteins using STRING with both structured data and visualization.
+
+    - If queried with a single protein, the tool expands the query to include the protein's 10 most likely interactors; enrichment is performed on this set, not the original single protein.
+    - For two or more proteins, enrichment is performed on the exact input set.
+    - Focus summaries on the top categories and most relevant terms for the results. Always report FDR for each claim.
+    - Report FDR as a human-readable value (e.g. 2.3e-5 or 0.023).
+
+    Output includes:
+    - `enrichment_data`: Structured enrichment results with p-values, FDR, descriptions
+    - `visualization`: Image URL for enrichment plot (if include_visuals=True)
+    """
+    
+    # Get enrichment data
+    params = {"identifiers": proteins}
+    if background_string_identifiers is not None:
+        params["background_string_identifiers"] = background_string_identifiers
     if species is not None:
         params["species"] = species
-    if category is not None:
-        params["category"] = category
-    if group_by_similarity is not None:
-        params["group_by_similarity"] = group_by_similarity
-    if color_palette is not None:
-        params["color_palette"] = color_palette
-    if number_of_term_shown is not None:
-        params["number_of_term_shown"] = number_of_term_shown
-    if x_axis is not None:
-        params["x_axis"] = x_axis
 
-    endpoint = f"/api/json/enrichment_image_url"
+    endpoint = f"/api/json/enrichment"
 
     async with httpx.AsyncClient(base_url=base_url) as client:
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
 
-        return {"results": r.json()}
+        res = truncate_enrichment(r.json(), 'json')
+        result = {"enrichment_data": res}
+        
+        if include_visuals:
+            # Get enrichment image
+            image_params = {"identifiers": proteins}
+            if species is not None:
+                image_params["species"] = species
+            if category is not None:
+                image_params["category"] = category
+            if group_by_similarity is not None:
+                image_params["group_by_similarity"] = group_by_similarity
+            if color_palette is not None:
+                image_params["color_palette"] = color_palette
+            if number_of_term_shown is not None:
+                image_params["number_of_term_shown"] = number_of_term_shown
+            if x_axis is not None:
+                image_params["x_axis"] = x_axis
+
+            image_endpoint = f"/api/json/enrichment_image_url"
+            image_response = await client.post(image_endpoint, data=image_params)
+            image_response.raise_for_status()
+            
+            result["visualization"] = image_response.json()
+
+        return result
+
+
+@mcp.tool(title="STRING: Get Functional Annotation")
+@log_calls
+async def string_functional_annotation(
+    identifiers: Annotated[
+        str,
+        Field(description="Separate multiple protein queries by %0d. e.g. SMO%0dTP53")
+    ]
+) -> dict:
+    """BLANK"""
+
+    endpoint = "/api/json/functional_annotation"
+
+    async with httpx.AsyncClient(base_url=base_url) as client:
+        r = await client.post(endpoint, data={"identifiers": identifiers})
+        r.raise_for_status()
+        return {"results": r.json()}  # Functional annotation per protein
 
 
 @mcp.tool(title="STRING: Protein-Protein Interaction (links) Enrichment")
