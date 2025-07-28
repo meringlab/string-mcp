@@ -408,7 +408,7 @@ async def string_network_get_link(
         return {"results": r.json()}
 
 
-@mcp.tool(title="STRING: Get protein similarity (homology) scores within species")
+@mcp.tool(title="STRING: Get protein similarity (homology) for the specified taxons")
 async def string_homology(
     proteins: Annotated[
         str,
@@ -418,18 +418,24 @@ async def string_homology(
         str,
         Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
     ] = None
+    species_b: Annotated[
+        Optional[str],
+        Field(description="Optional. One or more NCBI taxon IDs for target species, separated by comma (e.g. 9606,7227%,4932 for human, fly, and yeast)."
+    ]
 ) -> dict:
     """
-    This tool retrieves pairwise protein similarity scores (Smith–Waterman bit scores) for a set of proteins in STRING in the selected species.
+    This tool retrieves pairwise protein similarity scores (Smith–Waterman bit scores) for a set of proteins.
+    If not species_b is provided the tool retrieves the similarity with the species of query protein. 
 
-    - The tool returns only scores within the selected species, not alignments between proteins from different species.
-    - The scores are calculated using SIMAP and are symmetric, but only one direction (A->B) and self-hits are returned.
     - Bit scores below 50 are not stored or reported.
+    - The list is trucated to 25 proteins.
 
     Output fields (per protein pair):
       - ncbiTaxonId_A: NCBI taxon ID for protein A
       - stringId_A: STRING identifier (protein A)
+      - preferredName_A: protein A name
       - ncbiTaxonId_B: NCBI taxon ID for protein B
+      - preferredName_B: protein B name
       - stringId_B: STRING identifier (protein B)
       - bitscore: Smith–Waterman alignment bit score
     """
@@ -437,7 +443,7 @@ async def string_homology(
     if species is not None:
         params["species"] = species
 
-    endpoint = f"/api/json/homology"
+    endpoint = f"/api/json/homology_all"
     async with httpx.AsyncClient(base_url=base_url) as client:
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
