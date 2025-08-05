@@ -15,22 +15,24 @@ import uvicorn
 with open('config/server.config', 'r') as f:
     config = json.load(f)
 
+base_url = config["base_url"]
+server_port = int(config["server_port"])
 
-## logging 
+## logging verbosity ## 
+
+log_verbosity = {}
 log_verbosity['call'] = False
 log_verbosity['param'] = False
 
 if 'verbosity' in config:
-    if config['verbosity'] == 'full'
+
+    if config['verbosity'] == 'full':
         log_verbosity['call'] = True
         log_verbosity['params'] = True
-     if config['verbosity'] == 'low'
+
+    if config['verbosity'] == 'low':
         log_verbosity['call'] = True
         log_verbosity['params'] = False
- 
-
-base_url = config["base_url"]
-server_port = int(config["server_port"])
 
 mcp = FastMCP(
     name="STRING Database MCP Server",
@@ -133,13 +135,13 @@ async def string_interactions_query_set(
             "Only set this if the user explicitly requests it."
         ))
     ] = None,
-    show_query_node_labels: Annotated[
-        Optional[int],
-        Field(description=(
-            "Optional. Set to 1 to display user-supplied names instead of STRING preferred names "
-            "in the output. Default is 0. Only set if the user explicitly requests it."
-        ))
-    ] = None
+    #show_query_node_labels: Annotated[
+    #    Optional[int],
+    #    Field(description=(
+    #        "Optional. Set to 1 to display user-supplied names instead of STRING preferred names "
+    #        "in the output. Default is 0. Only set if the user explicitly requests it."
+    #    ))
+    #] = None
 ) -> dict:
     """
     Retrieves the interactions between the query proteins.
@@ -173,8 +175,8 @@ async def string_interactions_query_set(
         params["network_type"] = network_type
     if extend_network is not None:
         params["add_nodes"] = extend_network
-    if show_query_node_labels is not None:
-        params["show_query_node_labels"] = show_query_node_labels
+    #if show_query_node_labels is not None:
+    #    params["show_query_node_labels"] = show_query_node_labels
 
     endpoint = "/api/json/network"
 
@@ -298,10 +300,10 @@ async def string_visual_network(
         Optional[int],
         Field(description="Optional. 1 to hide proteins not connected to any other protein, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
     ] = None,
-    show_query_node_labels: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 display the user's query name(s) instead of STRING preferred name, (default: 0). DO NOT SET unless user explicitly requests.")
-    ] = None,
+    #show_query_node_labels: Annotated[
+    #    Optional[int],
+    #    Field(description="Optional. 1 display the user's query name(s) instead of STRING preferred name, (default: 0). DO NOT SET unless user explicitly requests.")
+    #] = None,
     center_node_labels: Annotated[
         Optional[int],
         Field(description="Optional. 1 to center protein names on nodes, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
@@ -336,8 +338,8 @@ async def string_visual_network(
         params["network_flavor"] = network_flavor
     if hide_disconnected_nodes is not None:
         params["hide_disconnected_nodes"] = hide_disconnected_nodes
-    if show_query_node_labels is not None:
-        params["show_query_node_labels"] = show_query_node_labels
+    #if show_query_node_labels is not None:
+    #    params["show_query_node_labels"] = show_query_node_labels
     if center_node_labels is not None:
         params["center_node_labels"] = center_node_labels
     if custom_label_font_size is not None:
@@ -382,10 +384,10 @@ async def string_network_get_link(
         Optional[int],
         Field(description="Optional. 1 to hide proteins not connected to any other protein, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
     ] = None,
-    show_query_node_labels: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 display the user's query name(s) instead of STRING preferred name, (default: 0). DO NOT SET unless user explicitly requests.")
-    ] = None,
+    #show_query_node_labels: Annotated[
+    #    Optional[int],
+    #    Field(description="Optional. 1 display the user's query name(s) instead of STRING preferred name, (default: 0). DO NOT SET unless user explicitly requests.")
+    #] = None,
 ) -> dict:
     """Retrieves a stable URL to an interactive STRING network for one or more proteins.
 
@@ -413,8 +415,8 @@ async def string_network_get_link(
         params["network_type"] = network_type
     if hide_disconnected_nodes is not None:
         params["hide_disconnected_nodes"] = hide_disconnected_nodes
-    if show_query_node_labels is not None:
-        params["show_query_node_labels"] = show_query_node_labels
+    #if show_query_node_labels is not None:
+    #    params["show_query_node_labels"] = show_query_node_labels
     if block_structure_pics_in_bubbles is not None:
         params["block_structure_pics_in_bubbles"] = block_structure_pics_in_bubbles
 
@@ -440,7 +442,7 @@ async def string_homology(
     ] = None,
     species_b: Annotated[
         Optional[str],
-        Field(description="Optional. One or more NCBI taxon IDs for target species, separated by comma (e.g. 9606,7227%,4932 for human, fly, and yeast).")
+        Field(description="Optional. One or more NCBI taxon IDs for target species, separated by comma (e.g. 9606,7227,4932 for human, fly, and yeast).")
     ] = None
 ) -> dict:
     """
@@ -767,7 +769,7 @@ def log_call(endpoint, params):
 
     if log_verbosity['params']:
         for param, value in params.items():
-            print('    {param}: {str(value)}', file=sys.stderr)
+            print(f'    {param}: {str(value)}', file=sys.stderr)
             
 
 
