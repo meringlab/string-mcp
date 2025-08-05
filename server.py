@@ -405,7 +405,7 @@ async def string_network_get_link(
     params = {"identifiers": proteins}
     if species is not None:
         params["species"] = species
-    if add_white_nodes is not None:
+    if extend_network is not None:
         params["add_white_nodes"] = extend_network
     if required_score is not None:
         params["required_score"] = required_score
