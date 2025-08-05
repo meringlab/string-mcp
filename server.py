@@ -14,13 +14,28 @@ import uvicorn
 
 with open('config/server.config', 'r') as f:
     config = json.load(f)
+
+
+## logging 
+log_verbosity['call'] = False
+log_verbosity['param'] = False
+
+if 'verbosity' in config:
+    if config['verbosity'] == 'full'
+        log_verbosity['call'] = True
+        log_verbosity['params'] = True
+     if config['verbosity'] == 'low'
+        log_verbosity['call'] = True
+        log_verbosity['params'] = False
  
+
 base_url = config["base_url"]
 server_port = int(config["server_port"])
 
 mcp = FastMCP(
     name="STRING Database MCP Server",
 )
+
 
 
 @mcp.tool(title="STRING: Resolves protein identifiers to metadata")
@@ -68,6 +83,7 @@ async def string_resolve_proteins(
 
     endpoint = "/api/json/get_string_ids"
     async with httpx.AsyncClient(base_url=base_url) as client:
+        log_call(endpoint, params)
         response = await client.post(endpoint, data=params)
         response.raise_for_status()
         results = response.json()
@@ -163,6 +179,7 @@ async def string_interactions_query_set(
     endpoint = "/api/json/network"
 
     async with httpx.AsyncClient(base_url=base_url) as client:
+        log_call(endpoint, params)
         response = await client.post(endpoint, data=params)
         response.raise_for_status()
 
@@ -244,6 +261,7 @@ async def string_all_interaction_partners(
 
     endpoint = "/api/json/interaction_partners"
     async with httpx.AsyncClient(base_url=base_url) as client:
+        log_call(endpoint, params)
         response = await client.post(endpoint, data=params)
         response.raise_for_status()
 
@@ -328,6 +346,7 @@ async def string_visual_network(
     endpoint = f"/api/json/network_image_url"
 
     async with httpx.AsyncClient(base_url=base_url) as client:
+        log_call(endpoint, params)
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
 
@@ -402,6 +421,7 @@ async def string_network_get_link(
     endpoint = f"/api/json/get_link"
 
     async with httpx.AsyncClient(base_url=base_url) as client:
+        log_call(endpoint, params)
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
 
@@ -417,11 +437,11 @@ async def string_homology(
     species: Annotated[
         str,
         Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
-    ] = None
+    ] = None,
     species_b: Annotated[
         Optional[str],
-        Field(description="Optional. One or more NCBI taxon IDs for target species, separated by comma (e.g. 9606,7227%,4932 for human, fly, and yeast)."
-    ]
+        Field(description="Optional. One or more NCBI taxon IDs for target species, separated by comma (e.g. 9606,7227%,4932 for human, fly, and yeast).")
+    ] = None
 ) -> dict:
     """
     This tool retrieves pairwise protein similarity scores (Smith–Waterman bit scores) for a set of proteins.
@@ -445,6 +465,7 @@ async def string_homology(
 
     endpoint = f"/api/json/homology_all"
     async with httpx.AsyncClient(base_url=base_url) as client:
+        log_call(endpoint, params)
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
 
@@ -491,6 +512,7 @@ async def string_homology_best(
 
     endpoint = f"/api/json/homology_best"
     async with httpx.AsyncClient(base_url=base_url) as client:
+        log_call(endpoint, params)
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
 
@@ -540,6 +562,7 @@ async def string_enrichment(
     endpoint = f"/api/json/enrichment"
 
     async with httpx.AsyncClient(base_url=base_url) as client:
+        log_call(endpoint, params)
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
 
@@ -559,6 +582,7 @@ async def string_functional_annotation(
     endpoint = "/api/json/functional_annotation"
 
     async with httpx.AsyncClient(base_url=base_url) as client:
+        log_call(endpoint, params)
         r = await client.post(endpoint, data={"identifiers": identifiers})
         r.raise_for_status()
         return {"results": r.json()}  # Functional annotation per protein
@@ -644,6 +668,7 @@ async def string_enrichment_image_url(
     endpoint = f"/api/json/enrichment_image_url"
 
     async with httpx.AsyncClient(base_url=base_url) as client:
+        log_call(endpoint, params)
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
 
@@ -698,6 +723,7 @@ async def string_ppi_enrichment(
 
     endpoint = f"/api/json/ppi_enrichment"
     async with httpx.AsyncClient(base_url=base_url) as client:
+        log_call(endpoint, params)
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
 
@@ -733,6 +759,17 @@ def truncate_enrichment(data, is_json):
         data = filtered_data
 
     return data
+
+def log_call(endpoint, params):
+
+    if log_verbosity['call']:
+        print(f"Call: {endpoint}", file=sys.stderr)
+
+    if log_verbosity['params']:
+        for param, value in params.items():
+            print('    {param}: {str(value)}', file=sys.stderr)
+            
+
 
 # ---- MCP server runner ----
 
