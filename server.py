@@ -415,10 +415,6 @@ async def string_network_get_link(
         params["network_type"] = network_type
     if hide_disconnected_nodes is not None:
         params["hide_disconnected_nodes"] = hide_disconnected_nodes
-    #if show_query_node_labels is not None:
-    #    params["show_query_node_labels"] = show_query_node_labels
-    if block_structure_pics_in_bubbles is not None:
-        params["block_structure_pics_in_bubbles"] = block_structure_pics_in_bubbles
 
     endpoint = f"/api/json/get_link"
 
