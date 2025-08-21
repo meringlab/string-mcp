@@ -7,6 +7,8 @@ from collections import defaultdict
 
 import httpx
 from fastmcp import FastMCP
+from fastmcp.server.dependencies import get_http_headers
+
 from starlette.middleware.cors import CORSMiddleware
 from typing import Annotated, Optional
 from pydantic import Field
@@ -29,10 +31,12 @@ if 'verbosity' in config:
     if config['verbosity'] == 'full':
         log_verbosity['call'] = True
         log_verbosity['params'] = True
+        log_verbosity['taskid'] = True
 
     if config['verbosity'] == 'low':
         log_verbosity['call'] = True
         log_verbosity['params'] = False
+        log_verbosity['taskid'] = True
 
 mcp = FastMCP(
     name="STRING Database MCP Server",
@@ -68,7 +72,7 @@ async def string_resolve_proteins(
     This method is useful for translating raw identifiers into readable, annotated protein entries.
 
     Output fields (per matched identifier):
-      - `queryItem`: Your original input identifier (if `echo_query=1`)
+      - `queryItem`: Your original input identifier
       - `queryIndex`: Position of the identifier in your input list (starting from 0)
       - `stringId`: STRING internal identifier
       - `ncbiTaxonId`: NCBI taxonomy ID
@@ -79,6 +83,7 @@ async def string_resolve_proteins(
     Example input: "TP53%0dSMO"
     """
 
+   
     params = {"identifiers": proteins, "echo_query": 1}
     if species is not None:
         params["species"] = species
@@ -442,12 +447,14 @@ async def string_homology(
     ] = None
 ) -> dict:
     """
-    This tool retrieves pairwise protein similarity scores (Smith–Waterman bit scores) for a set of proteins.
-    If not species_b is provided the tool retrieves the similarity with the species of query protein. 
-
+    This tool retrieves pairwise protein similarity scores (Smith–Waterman bit scores) for the query proteins.
+    If a target species (`species_b`) is not provided, the tool returns homologs within the query species only (intra-species comparison).
+    To retrieve homologs in specific organisms or taxonomic groups (e.g., vertebrates, yeast, plants), `species_b` must be provided as a list of NCBI taxon IDs for those species.
+    You can specify multiple target species. If the user mentions a taxonomic group, identify representative species or ask which organisms they are interested in.
+    
     - Bit scores below 50 are not stored or reported.
-    - The list is trucated to 25 proteins.
-
+    - The list is truncated to 25 proteins.
+    
     Output fields (per protein pair):
       - ncbiTaxonId_A: NCBI taxon ID for protein A
       - stringId_A: STRING identifier (protein A)
@@ -457,9 +464,13 @@ async def string_homology(
       - stringId_B: STRING identifier (protein B)
       - bitscore: Smith–Waterman alignment bit score
     """
+
     params = {"identifiers": proteins}
     if species is not None:
         params["species"] = species
+
+    if species_b is not None:
+        params["species_b"] = species_b
 
     endpoint = f"/api/json/homology_all"
     async with httpx.AsyncClient(base_url=base_url) as client:
@@ -469,6 +480,46 @@ async def string_homology(
 
         return {"results": r.json()}
 
+
+@mcp.tool(title="STRING: Get links to interaction evidence between a protein and a set of proteins")
+async def string_interaction_evidence(
+    identifier_a: Annotated[
+        str,
+        Field(description="Required. Protein A identifier.")
+    ],
+    identifiers_b: Annotated[
+        str,
+        Field(description="Required. One or more protein B identifiers, separated by %0d.")
+    ],
+    species: Annotated[
+        str,
+        Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
+    ] = None,
+) -> dict:
+    """
+    Use this tool when the user asks for detailed interaction **evidence** between proteins.
+    
+    It generates direct links to STRING’s evidence pages, which show the sources and scores (e.g., co-expression, experiments, databases) behind each predicted interaction.
+    
+    You must provide:
+    - One query protein (A)
+    - One or more target proteins (B), separated by `%0d`
+    - The species (NCBI taxon ID)
+    
+    This tool is especially helpful when users ask:
+    - "Can you show me the evidence for this interaction?"
+    - "What supports the interaction between TP53 and MDM2?"
+    - "Where can I see experimental validation for these pairs?"
+    
+    Each returned link corresponds to one A–B interaction.
+    """
+
+    output = []
+    for identifier_b in identifiers_b.split("%0d"):
+        link = f"{base_url}/interaction/{identifier_a}/{identifier_b}?species={species}"
+        output.append(link)
+
+    return {"results": output}
 
 
 @mcp.tool(title="STRING: Get best protein similarity (homology) hits across species")
@@ -763,10 +814,20 @@ def log_call(endpoint, params):
     if log_verbosity['call']:
         print(f"Call: {endpoint}", file=sys.stderr)
 
+    if log_verbosity['taskid']:
+        headers = get_http_headers()
+        client_id = headers.get("x-client-id", "None")
+        task_id = headers.get("x-task-id", "None")
+        print("TaskId:", task_id, file=sys.stderr)
+        print("ClientId:", client_id, file=sys.stderr)
+ 
     if log_verbosity['params']:
+        print("Params:", file=sys.stderr)
         for param, value in params.items():
             print(f'    {param}: {str(value)}', file=sys.stderr)
             
+       
+        
 
 
 # ---- MCP server runner ----
