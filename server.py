@@ -448,9 +448,11 @@ async def string_homology(
 ) -> dict:
     """
     This tool retrieves pairwise protein similarity scores (Smith–Waterman bit scores) for the query proteins.
+    
     If a target species (`species_b`) is not provided, the tool returns homologs within the query species only (intra-species comparison).
     To retrieve homologs in specific organisms or taxonomic groups (e.g., vertebrates, yeast, plants), `species_b` must be provided as a list of NCBI taxon IDs for those species.
-    You can specify multiple target species. If the user mentions a taxonomic group, identify representative species or ask which organisms they are interested in.
+    You can specify multiple target species. If you're not sure which species the user is interested in, ask. Show the full species names alongside their taxon IDs.
+
     
     - Bit scores below 50 are not stored or reported.
     - The list is truncated to 25 proteins.
