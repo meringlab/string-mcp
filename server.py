@@ -780,6 +780,55 @@ async def string_ppi_enrichment(
 
         return {"results": r.json()}
 
+
+@mcp.tool(title="STRING: Retrieve Proteins for Functional Term")
+async def string_proteins_for_term(
+    term_text: Annotated[
+        str,
+        Field(description=(
+            "Required. Functional term identifier (GO, KEGG, Reactome, etc.) "
+            "or descriptive free text (e.g. 'hsa05218', 'Melanoma', 'GO:0008543', 'Fibroblast growth factor')."
+        ))
+    ],
+    species: Annotated[
+        str,
+        Field(description=(
+            "NCBI/STRING taxonomy ID. Default is 9606 (human). "
+            "Examples: 10090 for mouse, or STRG0AXXXXX for uploaded genomes."
+        ))
+    ] = "9606"
+) -> dict:
+    """
+    Retrieve the proteins associated with a functional term or descriptive text.
+
+    This tool searches STRING’s knowledge base for the provided functional concept
+    (either a database identifier or free-text description) and returns the proteins
+    that are annotated to it for the specified species.
+
+    Output fields:
+      - category: Source database of the matched functional term
+                  (e.g. GO, KEGG, Reactome, Pfam, InterPro).
+      - term: Exact identifier for the functional term.
+      - preferredNames: List of human-readable protein names.
+      - stringIds: List of STRING protein identifiers, aligned with preferredNames
+                   (i.e., same length and order, so element i in both lists refers
+                   to the same protein).
+
+    Notes for the agent:
+      - The returned stringIds can be directly passed to other STRING tools
+        (e.g. network queries, funtional analysis).
+    """
+    params = {"term_text": term_text, "species": species}
+
+    endpoint = "/api/json/functional_terms"
+    async with httpx.AsyncClient(base_url=base_url) as client:
+        log_call(endpoint, params)
+        r = await client.post(endpoint, data=params)
+        r.raise_for_status()
+
+        return {"results": r.json()}
+
+
 # ---- MCP server helper functions ----
 
 def truncate_enrichment(data, is_json):
