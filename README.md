@@ -8,13 +8,11 @@ This server wraps STRING API endpoints and makes them available as MCP tools for
 ## Features
 
 - Resolve protein identifiers to STRING metadata
-- Retrieve interaction networks (JSON, image, or interactive link)
-- Fetch all interaction partners for proteins
+- Retrieve interaction networks
 - Perform homology lookups across species
 - Access evidence links for protein–protein interactions
 - Run functional enrichment analysis (including enrichment plots)
 - Get curated functional annotations for proteins
-- Test protein–protein interaction enrichment
 - Query proteins by functional terms (GO, KEGG, Reactome, etc.)
 
 ---
@@ -49,6 +47,7 @@ The server reads settings from `config/server.config` (JSON). Example:
 git clone git@github.com:meringlab/string-mcp.git
 cd string-mcp
 pip install -r requirements.txt
+```
 
 ## Running 
 
