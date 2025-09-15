@@ -42,7 +42,8 @@ The server reads settings from `config/server.config` (JSON). Example:
   "server_port": 57416,
   "verbosity": "low"
 }
+```
 
 ## Running 
 
-```python server.py
+```python server.py```
