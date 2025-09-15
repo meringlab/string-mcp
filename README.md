@@ -27,8 +27,7 @@ This server wraps STRING API endpoints and makes them available as MCP tools for
   - `httpx==0.28.1`  
   - `pydantic==2.11.7`  
 
-> ⚠️ **Note**: If the server crashes on startup, it’s very likely due to an incompatible **FastMCP** version.  
-> Run `python check_versions.py` to confirm you’re using the correct versions.
+> **Note**: If the server crashes on startup, it’s very likely due to an incompatible **FastMCP** version.  
 
 ---
 
@@ -47,3 +46,7 @@ The server reads settings from `config/server.config` (JSON). Example:
 ## Running 
 
 ```python server.py```
+
+## License
+The STRING MCP server is released under the CC-BY-4.0 license.  
+You are free to share and adapt the code with attribution.
