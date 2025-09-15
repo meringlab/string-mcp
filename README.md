@@ -51,8 +51,12 @@ pip install -r requirements.txt
 
 ## Running 
 
-```python server.py```
+```
+python server.py
+```
 
-## License
-The STRING MCP server is released under the CC-BY-4.0 license.  
+## License / Citation
+
+The STRING MCP server is released under the [CC-BY-4.0 license](https://creativecommons.org/licenses/by/4.0/).  
 You are free to share and adapt the code with attribution.
+If you use this code in your work, please also cite the latest [STRING manuscript](https://string-db.org/cgi/about?footer_active_subpage=references).
