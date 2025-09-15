@@ -6,6 +6,8 @@ This script exposes STRING database functionality as an MCP (Model Context Proto
 It provides tools for resolving protein identifiers, retrieving interactions, functional
 annotations, enrichment analysis, and generating network visualizations.
 
+The server is implemented in Python.
+
 Configuration:
   - Reads settings from config/server.config (JSON)
   - Requires "base_url" (STRING API endpoint) and "server_port"
