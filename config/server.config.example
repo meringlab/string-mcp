@@ -1,0 +1,5 @@
+{
+  "base_url": "https://string-db.org",
+  "server_port": 57416,
+  "verbosity": "low"
+}
