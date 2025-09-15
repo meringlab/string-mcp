@@ -49,8 +49,17 @@ except (FileNotFoundError, json.JSONDecodeError) as e:
     sys.stderr.write(f"Error loading config: {e}\n")
     sys.exit(1)
 
-base_url = config["base_url"]
-server_port = int(config["server_port"])
+
+base_url = config.get("base_url")
+server_port = config.get("server_port")
+
+if not base_url:
+    raise ValueError("Missing required config: 'base_url', e.g. 'https://version-12-0.string-db.org' ")
+
+if not server_port:
+    raise ValueError("Missing required config: 'server_port', e.g. '57416' ")
+
+timeout = float(config["timeout"], 30)
 
 ## logging verbosity ## 
 
@@ -58,6 +67,7 @@ log_verbosity = {}
 log_verbosity['call'] = False
 log_verbosity['params'] = False
 log_verbosity["taskid"] =  False
+
 
 if 'verbosity' in config:
 
@@ -122,7 +132,7 @@ async def string_resolve_proteins(
         params["species"] = species
 
     endpoint = "/api/json/get_string_ids"
-    async with httpx.AsyncClient(base_url=base_url) as client:
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         response = await client.post(endpoint, data=params)
         response.raise_for_status()
@@ -218,7 +228,7 @@ async def string_interactions_query_set(
 
     endpoint = "/api/json/network"
 
-    async with httpx.AsyncClient(base_url=base_url) as client:
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         response = await client.post(endpoint, data=params)
         response.raise_for_status()
@@ -300,7 +310,7 @@ async def string_all_interaction_partners(
         params["network_type"] = network_type
 
     endpoint = "/api/json/interaction_partners"
-    async with httpx.AsyncClient(base_url=base_url) as client:
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         response = await client.post(endpoint, data=params)
         response.raise_for_status()
@@ -385,7 +395,7 @@ async def string_visual_network(
 
     endpoint = f"/api/json/network_image_url"
 
-    async with httpx.AsyncClient(base_url=base_url) as client:
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
@@ -456,7 +466,7 @@ async def string_network_link(
 
     endpoint = f"/api/json/get_link"
 
-    async with httpx.AsyncClient(base_url=base_url) as client:
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
@@ -507,7 +517,7 @@ async def string_homology(
         params["species_b"] = species_b
 
     endpoint = f"/api/json/homology_all"
-    async with httpx.AsyncClient(base_url=base_url) as client:
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
@@ -600,7 +610,7 @@ async def string_enrichment(
 
     endpoint = f"/api/json/enrichment"
 
-    async with httpx.AsyncClient(base_url=base_url) as client:
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
@@ -639,7 +649,7 @@ async def string_functional_annotation(
 
     endpoint = "/api/json/functional_annotation"
 
-    async with httpx.AsyncClient(base_url=base_url) as client:
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         params = {"identifiers": identifiers, "species": species}
         log_call(endpoint, params)
         r = await client.post(endpoint, data=params)
@@ -727,7 +737,7 @@ async def string_enrichment_image_url(
 
     endpoint = f"/api/json/enrichment_image_url"
 
-    async with httpx.AsyncClient(base_url=base_url) as client:
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
@@ -782,7 +792,7 @@ async def string_ppi_enrichment(
         params["background_string_identifiers"] = background_string_identifiers
 
     endpoint = f"/api/json/ppi_enrichment"
-    async with httpx.AsyncClient(base_url=base_url) as client:
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
@@ -830,7 +840,7 @@ async def string_proteins_for_term(
     params = {"term_text": term_text, "species": species}
 
     endpoint = "/api/json/functional_terms"
-    async with httpx.AsyncClient(base_url=base_url) as client:
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
