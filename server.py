@@ -2,17 +2,15 @@
 
 import sys
 import json
+import httpx
 
 from collections import defaultdict
 
-import httpx
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
 
-from starlette.middleware.cors import CORSMiddleware
 from typing import Annotated, Optional
 from pydantic import Field
-import uvicorn
 
 with open('config/server.config', 'r') as f:
     config = json.load(f)
@@ -24,7 +22,7 @@ server_port = int(config["server_port"])
 
 log_verbosity = {}
 log_verbosity['call'] = False
-log_verbosity['param'] = False
+log_verbosity['params'] = False
 
 if 'verbosity' in config:
 
@@ -194,7 +192,7 @@ async def string_interactions_query_set(
 
 
 
-@mcp.tool(title="STRING: Get all interaction partners for protein(s)")
+@mcp.tool(title="STRING: Get all interaction partners for proteins")
 async def string_all_interaction_partners(
     identifiers: Annotated[
         str,
@@ -275,7 +273,7 @@ async def string_all_interaction_partners(
         return {"interactions": response.json()}
 
 
-@mcp.tool(title="STRING: Get visual interaction network (image URL)")
+@mcp.tool(title="STRING: Get interaction network image (image URL)")
 async def string_visual_network(
     proteins: Annotated[
         str,
@@ -359,8 +357,8 @@ async def string_visual_network(
 
         return {"image_url": r.text}
 
-@mcp.tool(title="STRING: Get interactive network link")
-async def string_network_get_link(
+@mcp.tool(title="STRING: Get interactive network link (web UI)")
+async def string_network_link(
     proteins: Annotated[
         str,
         Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
@@ -431,7 +429,7 @@ async def string_network_get_link(
         return {"results": r.json()}
 
 
-@mcp.tool(title="STRING: Get protein similarity (homology) for the specified taxons")
+@mcp.tool(title="STRING: Get homologs in specified target species")
 async def string_homology(
     proteins: Annotated[
         str,
@@ -451,9 +449,8 @@ async def string_homology(
     
     If a target species (`species_b`) is not provided, the tool returns homologs within the query species only (intra-species comparison).
     To retrieve homologs in specific organisms or taxonomic groups (e.g., vertebrates, yeast, plants), `species_b` must be provided as a list of NCBI taxon IDs for those species.
-    You can specify multiple target species. If you're not sure which species the user is interested in, ask. Show the full species names alongside their taxon IDs.
+    You can specify multiple target species. If you're not sure which species the user is interested in, ask. Remember to show the full species names alongside their taxon IDs.
 
-    
     - Bit scores below 50 are not stored or reported.
     - The list is truncated to 25 proteins.
     
@@ -483,7 +480,7 @@ async def string_homology(
         return {"results": r.json()}
 
 
-@mcp.tool(title="STRING: Get links to interaction evidence between a protein and a set of proteins")
+@mcp.tool(title="STRING: Get links to interaction evidence pages")
 async def string_interaction_evidence(
     identifier_a: Annotated[
         str,
@@ -524,52 +521,8 @@ async def string_interaction_evidence(
     return {"results": output}
 
 
-@mcp.tool(title="STRING: Get best protein similarity (homology) hits across species")
-async def string_homology_best(
-    proteins: Annotated[
-        str,
-        Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
-    ],
-    species: Annotated[
-        str,
-        Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes). Limit A-side proteins to this species.")
-    ] = None,
-    species_b: Annotated[
-        Optional[str],
-        Field(description="Optional. One or more NCBI taxon IDs for target species, separated by %0d (e.g. 9606%0d7227%0d4932 for human, fly, and yeast). Limit B-side best hits to these species.")
-    ] = None
-) -> dict:
-    """
-    This tool retrieves the best protein similarity hits (Smith–Waterman bit scores) between your input proteins and all STRING organisms (or limited to those specified by species_b).
 
-    - For each query protein, only the single best hit per target species is returned.
-    - The scores are computed by SIMAP; bit scores below 50 are not reported.
-    - Use 'species_b' to filter which target organisms to include.
-
-    Output fields (per result):
-      - ncbiTaxonId_A: NCBI taxon ID for query protein
-      - stringId_A: STRING identifier for query protein
-      - ncbiTaxonId_B: NCBI taxon ID for best-hit protein
-      - stringId_B: STRING identifier for best-hit protein
-      - bitscore: Smith–Waterman alignment bit score
-
-    Example identifiers: "SMO%0dTP53"
-    """
-    params = {"identifiers": proteins}
-    if species is not None:
-        params["species"] = species
-    if species_b is not None:
-        params["species_b"] = species_b
-
-    endpoint = f"/api/json/homology_best"
-    async with httpx.AsyncClient(base_url=base_url) as client:
-        log_call(endpoint, params)
-        r = await client.post(endpoint, data=params)
-        r.raise_for_status()
-
-        return {"results": r.json()}
-
-@mcp.tool(title="STRING: Enrichment Analysis")
+@mcp.tool(title="STRING: Functional enrichment analysis")
 async def string_enrichment(
     proteins: Annotated[
         str,
@@ -621,24 +574,45 @@ async def string_enrichment(
         return {"results": res}
 
 
-@mcp.tool(title="STRING: Get Functional Annotation")
+@mcp.tool(title="STRING: Retrieve functional annotations for proteins")
 async def string_functional_annotation(
     identifiers: Annotated[
         str,
         Field(description="Separate multiple protein queries by %0d. e.g. SMO%0dTP53")
-    ]
+    ],
+    species: Annotated[
+        str,
+        Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
+    ] = None,
 ) -> dict:
-    """BLANK"""
+    """
+    This tool retrieves curated functional annotations for a set of proteins.
+    
+    Each input protein is mapped to known biological terms from ontologies, pathway databases, tissues, compartments and domains — such as Gene Ontology (GO), KEGG, and UniProt Keywords.
+    
+    - Use this when the user asks what a protein does, where it's localized, expressed, or which pathways it participates in.
+    - Keep the output short and focused by highlighting a few diverse and specific annotations for each protein.
+    - This tool does not perform statistical enrichment — use the enrichment tool for that.
+    
+    Output fields (per protein):
+      - stringId: STRING protein identifier
+      - preferredName: Gene name or alias
+      - annotation: Functional description or keyword
+      - category: Source category (e.g. GO, KEGG, Keyword)
+      - term: Functional term or ID
+    """
 
     endpoint = "/api/json/functional_annotation"
 
     async with httpx.AsyncClient(base_url=base_url) as client:
+        params = {"identifiers": identifiers, "species": species}
         log_call(endpoint, params)
-        r = await client.post(endpoint, data={"identifiers": identifiers})
+        r = await client.post(endpoint, data=params)
         r.raise_for_status()
         return {"results": r.json()}  # Functional annotation per protein
 
-@mcp.tool(title="STRING: Get Enrichment Figure Image URL")
+
+@mcp.tool(title="STRING: Get enrichment result figure (image URL)")
 async def string_enrichment_image_url(
     identifiers: Annotated[
         str,
@@ -726,7 +700,7 @@ async def string_enrichment_image_url(
         return {"results": r.json()}
 
 
-@mcp.tool(title="STRING: Protein-Protein Interaction (links) Enrichment")
+@mcp.tool(title="STRING: Protein–protein interaction (PPI) enrichment")
 async def string_ppi_enrichment(
     identifiers: Annotated[
         str,
@@ -781,7 +755,7 @@ async def string_ppi_enrichment(
         return {"results": r.json()}
 
 
-@mcp.tool(title="STRING: Retrieve Proteins for Functional Term")
+@mcp.tool(title="STRING: Retrieve proteins associated with a functional term")
 async def string_proteins_for_term(
     term_text: Annotated[
         str,
