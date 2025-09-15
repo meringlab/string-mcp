@@ -43,6 +43,13 @@ The server reads settings from `config/server.config` (JSON). Example:
 }
 ```
 
+## Installation
+
+```bash
+git clone git@github.com:meringlab/string-mcp.git
+cd string-mcp
+pip install -r requirements.txt
+
 ## Running 
 
 ```python server.py```
