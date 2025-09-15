@@ -1,4 +1,31 @@
-# server.py
+"""
+STRING MCP Server
+=================
+
+This script exposes STRING database functionality as an MCP (Model Context Protocol) server.
+It provides tools for resolving protein identifiers, retrieving interactions, functional
+annotations, enrichment analysis, and generating network visualizations.
+
+Configuration:
+  - Reads settings from config/server.config (JSON)
+  - Requires "base_url" (STRING API endpoint) and "server_port"
+
+Run:
+  python server.py
+
+The server listens on the configured port and serves tools via streamable-http transport.
+
+Requirements:
+
+fastmcp>=2.10.6,<2.11
+httpx>=0.28,<0.29
+pydantic>=2.11,<2.12
+
+Creator: meringlab
+Contact email: damian.szklarczyk@sib.swiss 
+License: CC-BY-4.0
+
+"""
 
 import sys
 import json
@@ -12,8 +39,13 @@ from fastmcp.server.dependencies import get_http_headers
 from typing import Annotated, Optional
 from pydantic import Field
 
-with open('config/server.config', 'r') as f:
-    config = json.load(f)
+
+try:
+    with open("config/server.config") as f:
+        config = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError) as e:
+    sys.stderr.write(f"Error loading config: {e}\n")
+    sys.exit(1)
 
 base_url = config["base_url"]
 server_port = int(config["server_port"])
@@ -23,6 +55,7 @@ server_port = int(config["server_port"])
 log_verbosity = {}
 log_verbosity['call'] = False
 log_verbosity['params'] = False
+log_verbosity["taskid"] =  False
 
 if 'verbosity' in config:
 
@@ -177,7 +210,7 @@ async def string_interactions_query_set(
     if network_type is not None:
         params["network_type"] = network_type
     if extend_network is not None:
-        params["add_nodes"] = extend_network
+        params["add_white_nodes"] = extend_network
     #if show_query_node_labels is not None:
     #    params["show_query_node_labels"] = show_query_node_labels
 
@@ -324,7 +357,7 @@ async def string_visual_network(
 
     If few or no interactions are displayed, consider lowering the `required_score` parameter.
 
-    This tool returns a direct image URL. Always display the image inline (if supported), and include the link below the netowrk in markdown [STRING network](image_url)
+    This tool returns a direct image URL. Always display the image inline (if supported), and include the link below the network in markdown [STRING network](image_url)
 
     Input parameters should match those used with related STRING tools (e.g. `string_query_set_network`) unless otherwise specified.
     """
@@ -670,7 +703,7 @@ async def string_enrichment_image_url(
         Field(description='Optional. X-axis variable/order: "signal", "strength", "FDR", or "gene_count" (default: "signal").')
     ] = None
 ) -> dict:
-    """{Retrieves the STRING enrichment figure image *URL* (in TSV format) for a set of proteins.
+    """Retrieves the STRING enrichment figure image *URL* for a set of proteins.
 
     Only embed the image if a valid URL is present in the response; otherwise, do not embed or show a link.
 
@@ -790,7 +823,7 @@ async def string_proteins_for_term(
 
     Notes for the agent:
       - The returned stringIds can be directly passed to other STRING tools
-        (e.g. network queries, funtional analysis).
+        (e.g. network queries, functional analysis).
     """
     params = {"term_text": term_text, "species": species}
 
@@ -858,7 +891,6 @@ def log_call(endpoint, params):
 # ---- MCP server runner ----
 
 if __name__ == "__main__":
-    # Add CORS in your proxy (nginx) for browser-based playgrounds
     mcp.run(
         transport="streamable-http",
         host="0.0.0.0",
