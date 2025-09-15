@@ -51,7 +51,7 @@ except (FileNotFoundError, json.JSONDecodeError) as e:
 
 
 base_url = config.get("base_url")
-server_port = config.get("server_port")
+server_port = int(config.get("server_port", 0))
 
 if not base_url:
     raise ValueError("Missing required config: 'base_url', e.g. 'https://version-12-0.string-db.org' ")
@@ -59,7 +59,7 @@ if not base_url:
 if not server_port:
     raise ValueError("Missing required config: 'server_port', e.g. '57416' ")
 
-timeout = float(config["timeout"], 30)
+timeout = float(config.get("timeout", 30))
 
 ## logging verbosity ## 
 
@@ -194,9 +194,11 @@ async def string_interactions_query_set(
     """
     Retrieves the interactions between the query proteins.
     Use this method only when you specifically need to list the interactions between all proteins in your query set.
+    If user asks for 'physical' or 'complex' use 'physical' network type.
 
     - For a **single protein**, the network includes that protein and its top 10 most likely interaction partners, plus all interactions among those partners.
     - For **multiple proteins**, the network includes all direct interactions between them.
+    - If the user refers to "physical interactions", "complexes", or "binding", set the network type to "physical".
 
     If few or no interactions are returned, consider reducing the `required_score`.
 
@@ -282,6 +284,7 @@ async def string_all_interaction_partners(
     
     - Use this when asking **“What does TP53 interact with?”**
     - It differs from the `network` tool, which only shows interactions **within the input set** or a limited extension of it.
+    - If the user refers to "physical interactions", "complexes", or "binding", set the network type to "physical".
 
     You can restrict the number of partners using `limit`, or filter for strong interactions using `required_score`.
 
@@ -366,6 +369,7 @@ async def string_visual_network(
 
     - If a single protein is provided, the network includes that protein and its top 10 most likely interactors.
     - If multiple proteins are provided, the network includes all known interactions **within the query set**.
+    - If the user refers to "physical interactions", "complexes", or "binding", set the network type to "physical".
 
     If few or no interactions are displayed, consider lowering the `required_score` parameter.
 
@@ -445,6 +449,7 @@ async def string_network_link(
     - If queried with a single protein, the network includes the query protein and its 10 most likely interactors.
     - If queried with multiple proteins, the network will show interactions among the queried set.
     - If no or very few interactions are returned, try lowering the required_score parameter.
+    - If the user refers to "physical interactions", "complexes", or "binding", set the network type to "physical".
 
     When calling related tools, use the same input parameters unless otherwise specified.
     Always display this link prominently and make it clickable for the user.
