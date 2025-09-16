@@ -171,8 +171,7 @@ async def string_interactions_query_set(
     network_type: Annotated[
         Optional[str],
         Field(description=(
-            'Optional. Type of network to retrieve: "functional" (default) or "physical". '
-            "Only set this if the user explicitly requests it."
+            'Optional. Network type: "functional" (default) or "physical" (co-complex).'
         ))
     ] = None,
     extend_network: Annotated[
@@ -272,8 +271,7 @@ async def string_all_interaction_partners(
     network_type: Annotated[
         Optional[str],
         Field(description=(
-            'Optional. Type of interaction network: "functional" (default) or "physical". '
-            "Only set if the user explicitly requests it."
+            'Optional. Network type: "functional" (default) or "physical" (co-complex).'
         ))
     ] = None
 ) -> dict:
@@ -333,19 +331,19 @@ async def string_visual_network(
     ] = None,
     extend_network: Annotated[
         Optional[int],
-        Field(description="Optional. Add specified number of nodes to the network, based on their scores (default: 0, or 10 for single protein queries). DO NOT SET unless user explicitly requests.")
+        Field(description="Optional. Add specified number of nodes to the network, based on their scores (default: 0, or 10 for single protein queries).")
     ] = None,
     required_score: Annotated[
         Optional[int],
-        Field(description="Optional. Threshold of significance to include an interaction (0-1000). DO NOT SET unless user explicitly requests.")
+        Field(description="Optional. Threshold of significance to include an interaction (0-1000).")
     ] = None,
     network_type: Annotated[
         Optional[str],
-        Field(description='Optional. Network type: "functional" (default) or "physical". DO NOT SET unless user explicitly requests.')
+        Field(description='Optional. Network type: "functional" (default) or "physical" (co-complex).')
     ] = None,
     network_flavor: Annotated[
         Optional[str],
-        Field(description='Optional. Edge style: "evidence" (default), "confidence", or "actions". DO NOT SET unless user explicitly requests.')
+        Field(description='Optional. Edge style: "evidence" (default), "confidence", or "actions".')
     ] = None,
     hide_disconnected_nodes: Annotated[
         Optional[int],
@@ -418,19 +416,19 @@ async def string_network_link(
     ] = None,
     extend_network: Annotated[
         Optional[int],
-        Field(description="Optional. Add white nodes to network, based on scores (default: 0). DO NOT SET unless user explicitly requests.")
+        Field(description="Optional. Add white nodes to network, based on scores (default: 0).")
     ] = None,
     required_score: Annotated[
         Optional[int],
-        Field(description="Optional. Threshold of significance to include an interaction (0-1000). DO NOT SET unless user explicitly requests.")
+        Field(description="Optional. Threshold of significance to include an interaction (0-1000).")
     ] = None,
     network_flavor: Annotated[
         Optional[str],
-        Field(description='Optional. Edge style: "evidence" (default), "confidence", or "actions". DO NOT SET unless user explicitly requests.')
+        Field(description='Optional. Edge style: "evidence" (default) or "confidence"')
     ] = None,
     network_type: Annotated[
         Optional[str],
-        Field(description='Optional. Network type: "functional" (default) or "physical". DO NOT SET unless user explicitly requests.')
+        Field(description='Optional. Network type: "functional" (default) or "physical" (co-complex).')
     ] = None,
     hide_disconnected_nodes: Annotated[
         Optional[int],
