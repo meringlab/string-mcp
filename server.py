@@ -831,6 +831,8 @@ async def string_proteins_for_term(
       - category: Source database of the matched functional term
                   (e.g. GO, KEGG, Reactome, Pfam, InterPro).
       - term: Exact identifier for the functional term.
+      - description: The free text description of the term.
+      - proteinCount: Number of proteins annotated with that term
       - preferredNames: List of human-readable protein names.
       - stringIds: List of STRING protein identifiers, aligned with preferredNames
                    (i.e., same length and order, so element i in both lists refers
