@@ -254,13 +254,13 @@ async def string_all_interaction_partners(
             "(e.g. STRG0AXXXXX for uploaded genomes). Only set if the user explicitly requests it."
         ))
     ] = None,
-    limit: Annotated[
-        Optional[int],
-        Field(description=(
-            "Optional. Maximum number of interaction partners returned per query protein. "
-            "Higher-confidence interactions appear first. Only set if the user explicitly requests it."
-        ))
-    ] = None,
+    #limit: Annotated[
+    #    Optional[int],
+    #    Field(description=(
+    #        "Optional. Maximum number of interaction partners returned per query protein. "
+    #        "Higher-confidence interactions appear first. Only set if the user explicitly requests it."
+    #    ))
+    #] = None,
     required_score: Annotated[
         Optional[int],
         Field(description=(
@@ -284,7 +284,7 @@ async def string_all_interaction_partners(
     - It differs from the `network` tool, which only shows interactions **within the input set** or a limited extension of it.
     - If the user refers to "physical interactions", "complexes", or "binding", set the network type to "physical".
 
-    You can restrict the number of partners using `limit`, or filter for strong interactions using `required_score`.
+    You can filter for strong interactions using `required_score`.
 
     Output fields (per interaction):
       - `stringId_A` / `stringId_B`: Internal STRING identifiers
@@ -304,7 +304,7 @@ async def string_all_interaction_partners(
     if species is not None:
         params["species"] = species
     if limit is not None:
-        params["limit"] = limit
+        params["limit"] = 100
     if required_score is not None:
         params["required_score"] = required_score
     if network_type is not None:
