@@ -827,6 +827,9 @@ async def string_proteins_for_term(
     (either a database identifier or free-text description) and returns the proteins
     that are annotated to it for the specified species.
 
+    This tool supports one species at a time. To retrieve proteins for multiple 
+    species (e.g., in comparative studies), you must query each species separately.
+
     Output fields:
       - category: Source database of the matched functional term
                   (e.g. GO, KEGG, Reactome, Pfam, InterPro).
