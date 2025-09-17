@@ -825,10 +825,11 @@ async def string_proteins_for_term(
 
     This tool searches STRING’s knowledge base for the provided functional concept
     (either a database identifier or free-text description) and returns the proteins
-    that are annotated to it for the specified species.
+    that are annotated to it for the single specified species.
 
-    This tool supports one species at a time. To retrieve proteins for multiple 
-    species (e.g., in comparative studies), you must query each species separately.
+    Important:
+      - Do not claim which species has the most/fewest proteins without actually comparing multiple species.
+      - For cross-species questions, run this tool separately for each species and then compare results.
 
     Output fields:
       - category: Source database of the matched functional term
@@ -853,7 +854,8 @@ async def string_proteins_for_term(
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
 
-        return {"results": r.json()}
+        res = truncate_functional_terms(r.json(), 'json')
+        return {"results": res}
 
 
 # ---- MCP server helper functions ----
@@ -877,9 +879,30 @@ def truncate_enrichment(data, is_json):
             if category_count[category] > term_cutoff:
                 continue
 
+            print(row['inputGenes'], file=sys.stderr)
             if len(row['inputGenes']) > size_cutoff:
                 row['inputGenes'] = [f'[>{size_cutoff} proteins]'] 
                 row['preferredNames'] = [f'[>{size_cutoff} proteins]'] 
+
+            filtered_data.append(row)
+
+        data = filtered_data
+
+    return data
+
+def truncate_functional_terms(data, is_json):
+   
+    size_cutoff = 100
+
+    if is_json.lower() == 'json':
+
+        filtered_data = []
+
+        for row in data:
+
+            if len(row['preferredNames']) > size_cutoff:
+                row['preferrednames'] = row['preferredNames'][:size_cutoff] + [",... and more"]
+                row['stringIds'] = row['stringIds'][:size_cutoff] + [",... and more"]
 
             filtered_data.append(row)
 
