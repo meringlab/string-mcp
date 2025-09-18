@@ -234,7 +234,8 @@ async def string_interactions_query_set(
         response = await client.post(endpoint, data=params)
         response.raise_for_status()
 
-        return {"network": response.json()}
+        res = truncate_network(response.json(), params["required_score"], 'json')
+        return {"network": res}
 
 
 
@@ -300,11 +301,13 @@ async def string_all_interaction_partners(
       - `tscore`: Text mining score
     """
 
+    limit = 100
+
     params = {"identifiers": identifiers}
     if species is not None:
         params["species"] = species
     if limit is not None:
-        params["limit"] = 100
+        params["limit"] = limit
     if required_score is not None:
         params["required_score"] = required_score
     if network_type is not None:
@@ -815,21 +818,23 @@ async def string_proteins_for_term(
     species: Annotated[
         str,
         Field(description=(
-            "NCBI/STRING taxonomy ID. Default is 9606 (human). "
-            "Examples: 10090 for mouse, or STRG0AXXXXX for uploaded genomes."
+            "NCBI/STRING taxonomy ID. This tool only supports one species per call. "
+            "It cannot return results across multiple species or identify the species "
+            "with the most/fewest proteins. For such questions, run this tool separately "
+            "for each species and then compare the results. "
+            "Default is 9606 (human). Examples: 10090 for mouse, or STRG0AXXXXX for uploaded genomes."
         ))
     ] = "9606"
 ) -> dict:
     """
-    Retrieve the proteins associated with a functional term or descriptive text.
+    Retrieve the proteins associated with a functional term or descriptive text in a single species.
+    You can also query for specific tissues, compartments, and domains.
 
-    This tool searches STRING’s knowledge base for the provided functional concept
-    (either a database identifier or free-text description) and returns the proteins
-    that are annotated to it for the single specified species.
+    IMPORTANT: Do not claim largest/smallest number without querying other species
+    IMPORTANT: If needed query multiple species seperately for comparisons. 
 
-    Important:
-      - Do not claim which species has the most/fewest proteins without actually comparing multiple species.
-      - For cross-species questions, run this tool separately for each species and then compare results.
+    For tissue queries, use BRENDA tissue nomenclature.  
+    Omit the word "tissue" — for example, use "skin" instead of "skin tissue".
 
     Output fields:
       - category: Source database of the matched functional term
@@ -837,14 +842,9 @@ async def string_proteins_for_term(
       - term: Exact identifier for the functional term.
       - description: The free text description of the term.
       - proteinCount: Number of proteins annotated with that term
-      - preferredNames: List of human-readable protein names.
-      - stringIds: List of STRING protein identifiers, aligned with preferredNames
-                   (i.e., same length and order, so element i in both lists refers
-                   to the same protein).
+      - preferredNames: List of human-readable protein names (truncated to first 100)
+      - stringIds: List of STRING protein identifiers (truncated to first 100)
 
-    Notes for the agent:
-      - The returned stringIds can be directly passed to other STRING tools
-        (e.g. network queries, functional analysis).
     """
     params = {"term_text": term_text, "species": species}
 
@@ -860,29 +860,34 @@ async def string_proteins_for_term(
 
 # ---- MCP server helper functions ----
 
+from collections import defaultdict
+
 def truncate_enrichment(data, is_json):
-   
-    term_cutoff = 20
-    size_cutoff = 10
+    term_cutoff = 25   # max terms per category
+    size_cutoff = 15   # max proteins listed per term
 
     if is_json.lower() == 'json':
-
         filtered_data = []
-
         category_count = defaultdict(int)
 
         for row in data:
-
             category = row['category']
             category_count[category] += 1
 
+            # Skip if we already hit the cap for this category
             if category_count[category] > term_cutoff:
                 continue
 
-            print(row['inputGenes'], file=sys.stderr)
+            # Save total before truncation
+            row['inputGenes_total'] = len(row['inputGenes'])
+            row['preferredNames_total'] = len(row['preferredNames'])
+
             if len(row['inputGenes']) > size_cutoff:
-                row['inputGenes'] = [f'[>{size_cutoff} proteins]'] 
-                row['preferredNames'] = [f'[>{size_cutoff} proteins]'] 
+                row['inputGenes'] = row['inputGenes'][:size_cutoff] + ["..."]
+                row['preferredNames'] = row['preferredNames'][:size_cutoff] + ["..."]
+                row['truncated'] = True
+            else:
+                row['truncated'] = False
 
             filtered_data.append(row)
 
@@ -890,25 +895,73 @@ def truncate_enrichment(data, is_json):
 
     return data
 
-def truncate_functional_terms(data, is_json):
+
+def truncate_network(data, input_score_threshold, is_json):
    
-    size_cutoff = 100
+    size_cutoff = 250
+    original_data_length = len(data)
+    score_threshold = input_score_threshold
 
     if is_json.lower() == 'json':
+ 
+        while len(data) > size_cutoff and score_threshold < 999:
 
+            for threshold in (400, 700, 900, 999):
+                if score_threshold < threshold:
+                    score_threshold = threshold
+                    break
+
+            truncated_data = []
+            for row in data:
+                score = row['score']
+                if score >= score_threshold:
+                    truncated_data.append(row)
+            
+            data = truncated_data
+       
+        if len(data) > size_cutoff:
+            data = data[:size_cutoff]
+            data.insert(0, {"note": f"The list was truncated to first {size_cutoff} interactions..."})
+            data.insert(0, f'NOTE: ')
+
+        if input_score_threshold != score_threshold:
+            data.insert(0, {"note": f"Required score was adjusted to {score_threshold} to limit the number of interactions."})
+
+    return data
+
+ 
+def truncate_functional_terms(data, is_json):
+    term_size_cutoff = 10
+    protein_size_cutoff_top = 500    # cap for top terms
+    protein_size_cutoff_rest = 50    # cap for later terms
+
+    if is_json.lower() == 'json':
         filtered_data = []
 
-        for row in data:
-
-            if len(row['preferredNames']) > size_cutoff:
-                row['preferrednames'] = row['preferredNames'][:size_cutoff] + [",... and more"]
-                row['stringIds'] = row['stringIds'][:size_cutoff] + [",... and more"]
+        for i, row in enumerate(data[:term_size_cutoff]):
+            if i < 3:
+                # top terms: allow up to 500
+                if len(row['preferredNames']) > protein_size_cutoff_top:
+                    row['preferredNames'] = row['preferredNames'][:protein_size_cutoff_top] + ["..."]
+                    row['stringIds'] = row['stringIds'][:protein_size_cutoff_top] + ["..."]
+                    row['truncated'] = True
+                else:
+                    row['truncated'] = False
+            else:
+                # later terms: allow only 50
+                if len(row['preferredNames']) > protein_size_cutoff_rest:
+                    row['preferredNames'] = row['preferredNames'][:protein_size_cutoff_rest] + ["..."]
+                    row['stringIds'] = row['stringIds'][:protein_size_cutoff_rest] + ["..."]
+                    row['truncated'] = True
+                else:
+                    row['truncated'] = False
 
             filtered_data.append(row)
 
         data = filtered_data
 
     return data
+
 
 def log_call(endpoint, params):
 
@@ -926,10 +979,6 @@ def log_call(endpoint, params):
         print("Params:", file=sys.stderr)
         for param, value in params.items():
             print(f'    {param}: {str(value)}', file=sys.stderr)
-            
-       
-        
-
 
 # ---- MCP server runner ----
 
