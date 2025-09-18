@@ -963,6 +963,45 @@ def truncate_functional_terms(data, is_json):
     return data
 
 
+@mcp.tool(title="STRING: Query species and clades in STRING")
+async def string_query_species(
+    species_text: Annotated[
+        str,
+        Field(description=(
+            "Required. Free-text name of a species or clade to search in STRING. "
+            "Examples: 'human', 'mouse', 'vertebrates'. "
+            "Partial matches are allowed."
+        ))
+    ],
+) -> dict:
+    """
+    Search for species or clades available in STRING by free-text query
+    and return their NCBI taxonomy IDs.
+
+    - Use this when the user asks which species or clades are present in STRING,
+      or when you need the correct NCBI taxon ID to pass to other tools.
+    - The results are limited to the top 50 matches.
+    - When user asks for species list do not list clades.
+
+    Output fields (per match):
+      - ncbiTaxonId: NCBI taxonomy identifier
+      - nameCompact: Short/compact species or clade name
+      - nameOfficial: Official taxonomy name
+      - speciesInClade: List of species in the clade
+
+    """
+    endpoint = "/api/json/query_species_names"
+    params = {"species_text": species_text, 'limit': 50, 'add_sps':'t'}
+
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
+        log_call(endpoint, params)
+        r = await client.post(endpoint, data=params)
+        r.raise_for_status()
+
+        results = r.json()  # ensure only top 10
+        return {"results": results}
+
+
 def log_call(endpoint, params):
 
     if log_verbosity['call']:
