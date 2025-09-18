@@ -114,15 +114,6 @@ async def string_resolve_proteins(
 
     This method is useful for translating raw identifiers into readable, annotated protein entries.
 
-    Output fields (per matched identifier):
-      - `queryItem`: Your original input identifier
-      - `queryIndex`: Position of the identifier in your input list (starting from 0)
-      - `stringId`: STRING internal identifier
-      - `ncbiTaxonId`: NCBI taxonomy ID
-      - `taxonName`: Species name
-      - `preferredName`: Common protein name
-      - `annotation`: Protein annotation
-
     Example input: "TP53%0dSMO"
     """
 
@@ -201,18 +192,9 @@ async def string_interactions_query_set(
 
     If few or no interactions are returned, consider reducing the `required_score`.
 
-    Output fields (per interaction):
-      - `stringId_A` / `stringId_B`: Internal STRING identifiers
-      - `preferredName_A` / `preferredName_B`: Protein symbols
-      - `ncbiTaxonId`: NCBI species ID
-      - `score`: Combined confidence score (0–1000)
-      - `nscore`: Neighborhood evidence score
-      - `fscore`: Gene fusion evidence score
-      - `pscore`: Phylogenetic profile evidence score
-      - `ascore`: Coexpression evidence score
-      - `escore`: Experimental evidence score
-      - `dscore`: Curated database evidence score
-      - `tscore`: Text mining evidence score
+    - Evidence scores:  
+        `nscore` (neighborhood), `fscore` (fusion), `pscore` (phylogenetic profile),  
+        `ascore` (coexpression), `escore` (experimental), `dscore` (database), `tscore` (text mining)
     """
 
     params = {"identifiers": proteins}
@@ -234,7 +216,7 @@ async def string_interactions_query_set(
         response = await client.post(endpoint, data=params)
         response.raise_for_status()
 
-        res = truncate_network(response.json(), params["required_score"], 'json')
+        res = truncate_network(response.json(), required_score, 'json')
         return {"network": res}
 
 
@@ -287,18 +269,9 @@ async def string_all_interaction_partners(
 
     You can filter for strong interactions using `required_score`.
 
-    Output fields (per interaction):
-      - `stringId_A` / `stringId_B`: Internal STRING identifiers
-      - `preferredName_A` / `preferredName_B`: Protein symbols
-      - `ncbiTaxonId`: NCBI taxonomy ID
-      - `score`: Combined confidence score (0–1000)
-      - `nscore`: Genome neighborhood score
-      - `fscore`: Gene fusion score
-      - `pscore`: Phylogenetic profile score
-      - `ascore`: Coexpression score
-      - `escore`: Experimental score
-      - `dscore`: Curated database score
-      - `tscore`: Text mining score
+    - Evidence scores:  
+        `nscore` (neighborhood), `fscore` (fusion), `pscore` (phylogenetic profile),  
+        `ascore` (coexpression), `escore` (experimental), `dscore` (database), `tscore` (text mining)
     """
 
     limit = 100
@@ -505,14 +478,6 @@ async def string_homology(
     - Bit scores below 50 are not stored or reported.
     - The list is truncated to 25 proteins.
     
-    Output fields (per protein pair):
-      - ncbiTaxonId_A: NCBI taxon ID for protein A
-      - stringId_A: STRING identifier (protein A)
-      - preferredName_A: protein A name
-      - ncbiTaxonId_B: NCBI taxon ID for protein B
-      - preferredName_B: protein B name
-      - stringId_B: STRING identifier (protein B)
-      - bitscore: Smith–Waterman alignment bit score
     """
 
     params = {"identifiers": proteins}
@@ -900,6 +865,10 @@ def truncate_network(data, input_score_threshold, is_json):
    
     size_cutoff = 250
     original_data_length = len(data)
+
+    if input_score_threshold == None or not input_score_threshold.isnumeric()
+        input_score_threshold = 400
+
     score_threshold = input_score_threshold
 
     if is_json.lower() == 'json':
