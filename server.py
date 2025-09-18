@@ -529,6 +529,8 @@ async def string_interaction_evidence(
     Each returned link corresponds to one A–B interaction.
     """
 
+    identifiers_b = identifiers_b.replace('%0D', '%0d')
+
     output = []
     for identifier_b in identifiers_b.split("%0d"):
         link = f"{base_url}/interaction/{identifier_a}/{identifier_b}?species={species}"
@@ -625,7 +627,8 @@ async def string_functional_annotation(
         log_call(endpoint, params)
         r = await client.post(endpoint, data=params)
         r.raise_for_status()
-        return {"results": r.json()}  # Functional annotation per protein
+        res = sort_and_truncate_functional_annotation(r.json(), 'json')
+        return {"results": res}  # Functional annotation per protein
 
 
 @mcp.tool(title="STRING: Get enrichment result figure (image URL)")
@@ -866,7 +869,7 @@ def truncate_network(data, input_score_threshold, is_json):
     size_cutoff = 250
     original_data_length = len(data)
 
-    if input_score_threshold == None or not input_score_threshold.isnumeric()
+    if input_score_threshold == None or not str(input_score_threshold).isnumeric():
         input_score_threshold = 400
 
     score_threshold = input_score_threshold
@@ -891,13 +894,26 @@ def truncate_network(data, input_score_threshold, is_json):
         if len(data) > size_cutoff:
             data = data[:size_cutoff]
             data.insert(0, {"note": f"The list was truncated to first {size_cutoff} interactions..."})
-            data.insert(0, f'NOTE: ')
 
         if input_score_threshold != score_threshold:
             data.insert(0, {"note": f"Required score was adjusted to {score_threshold} to limit the number of interactions."})
 
     return data
 
+def sort_and_truncate_functional_annotation(data, is_json):
+
+
+    size_cutoff = 100
+
+    if is_json.lower() == 'json':
+ 
+        data = sorted(data, key=lambda x: x["ratio_in_set"], reverse=True)
+        
+        if len(data) > size_cutoff:
+            data = data[:size_cutoff]
+            data.insert(0, {"note": f"The list was truncated to first {size_cutoff} terms..."})
+
+    return data
  
 def truncate_functional_terms(data, is_json):
     term_size_cutoff = 10
