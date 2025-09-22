@@ -125,10 +125,15 @@ async def string_resolve_proteins(
     endpoint = "/api/json/get_string_ids"
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
-        response = await client.post(endpoint, data=params)
-        response.raise_for_status()
-        results = response.json()
+        try:
+            response = await client.post(endpoint, data=params)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return {"error": "No protein mappings were found for the given input identifiers."}
+            raise  # re-raise other errors
 
+        results = response.json()
         if not results:
             return {"error": "No protein mappings were found for the given input identifiers."}
 
