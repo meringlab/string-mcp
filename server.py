@@ -197,9 +197,9 @@ async def string_interactions_query_set(
 
     If few or no interactions are returned, consider reducing the `required_score`.
 
-    - Evidence scores:  
+    - Expand the names of evidence scores:  
         `nscore` (neighborhood), `fscore` (fusion), `pscore` (phylogenetic profile),  
-        `ascore` (coexpression), `escore` (experimental), `dscore` (database), `tscore` (text mining)
+        `ascore` (coexpression), `escore` (experimental), `dscore` (database), `tscore` (text-mining)
     """
 
     params = {"identifiers": proteins}
@@ -344,17 +344,18 @@ async def string_visual_network(
     ] = None
 ) -> dict:
     """
-    Retrieves a URL to a **visual STRING interaction network image** for one or more proteins.
+    Retrieves a URL to a **STRING interaction network image** for one or more proteins.  
+    
+    - For a single protein: includes the protein and its top 10 most likely interactors.  
+    - For multiple proteins: includes all known interactions **within the query set**.  
+    - If the user asks for "physical interactions", "complexes", or "binding", set `network_type` to "physical".  
+    
+    If few or no interactions are shown, consider lowering `required_score`.  
+    
+    This tool returns a direct image URL. Always display the image inline, and ask if the user also wants a link to the interactive STRING network page.  
+    
+    Input parameters should match those used in related STRING tools (e.g. `string_interactions_query_set`), unless otherwise specified.  
 
-    - If a single protein is provided, the network includes that protein and its top 10 most likely interactors.
-    - If multiple proteins are provided, the network includes all known interactions **within the query set**.
-    - If the user refers to "physical interactions", "complexes", or "binding", set the network type to "physical".
-
-    If few or no interactions are displayed, consider lowering the `required_score` parameter.
-
-    This tool returns a direct image URL. Always display the image inline (if supported), and include the link below the network in markdown [STRING network](image_url)
-
-    Input parameters should match those used with related STRING tools (e.g. `string_query_set_network`) unless otherwise specified.
     """
     params = {"identifiers": proteins}
     if species is not None:
@@ -430,8 +431,8 @@ async def string_network_link(
     - If no or very few interactions are returned, try lowering the required_score parameter.
     - If the user refers to "physical interactions", "complexes", or "binding", set the network type to "physical".
 
+    Always display the link as markdown (hide the raw URL).  
     When calling related tools, use the same input parameters unless otherwise specified.
-    Always display this link prominently and make it clickable for the user.
 
     """
     params = {"identifiers": proteins}
@@ -474,15 +475,14 @@ async def string_homology(
     ] = None
 ) -> dict:
     """
-    This tool retrieves pairwise protein similarity scores (Smith–Waterman bit scores) for the query proteins.
+    Retrieves pairwise protein similarity scores (Smith–Waterman bit scores) for the query proteins.  
     
-    If a target species (`species_b`) is not provided, the tool returns homologs within the query species only (intra-species comparison).
-    To retrieve homologs in specific organisms or taxonomic groups (e.g., vertebrates, yeast, plants), `species_b` must be provided as a list of NCBI taxon IDs for those species.
-    You can specify multiple target species. If you're not sure which species the user is interested in, ask. Remember to show the full species names alongside their taxon IDs.
-
-    - Bit scores below 50 are not stored or reported.
-    - The list is truncated to 25 proteins.
-    
+    - If no target species (`species_b`) is provided, results are intra-species (within the query species).  
+    - To retrieve homologs in other species or clades (e.g. vertebrates, yeast, plants), specify one or more NCBI taxon IDs in `species_b`.  
+    - Multiple target species are supported; ask the user to clarify if needed.  
+    - Always report species names together with their taxon IDs.  
+    - Bit scores < 50 are not reported.  
+    - Results are truncated to the top 50 proteins per input protein.
     """
 
     params = {"identifiers": proteins}
@@ -800,14 +800,15 @@ async def string_proteins_for_term(
     ] = "9606"
 ) -> dict:
     """
-    Retrieve the proteins associated with a functional term or descriptive text in a single species.
-    You can also query for specific tissues, compartments, and domains.
-
-    IMPORTANT: Do not claim largest/smallest number without querying other species
-    IMPORTANT: If needed query multiple species seperately for comparisons. 
-
-    For tissue queries, use BRENDA tissue nomenclature.  
-    Omit the word "tissue" — for example, use "skin" instead of "skin tissue".
+    Retrieve proteins associated with a functional term or descriptive text in a single species.  
+    You can query for tissues, compartments, diseases, processes, pathways, and domains.  
+    
+    IMPORTANT: For cross-species comparisons, run this tool separately for each species.  
+    Select relevant model organisms to search or ask user to provide the selection.
+    
+    If no results are found, try simplifying the query.  
+    For tissue queries, follow BRENDA tissue nomenclature and omit the word "tissue"  
+    (e.g. use "skin" instead of "skin tissue").  
 
     Output fields:
       - category: Source database of the matched functional term
