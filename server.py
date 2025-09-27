@@ -32,6 +32,7 @@ License: CC-BY-4.0
 import sys
 import json
 import httpx
+import traceback
 
 from collections import defaultdict
 
@@ -81,11 +82,71 @@ if 'verbosity' in config:
         log_verbosity['params'] = False
         log_verbosity['taskid'] = True
 
+
+async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
+
+    params = data
+
+    try:
+        response = await client.post(endpoint, data=params)
+        response.raise_for_status()
+        return response.json()  # success
+
+    except httpx.HTTPStatusError as e:
+        traceback.print_exc(file=sys.stderr)
+
+        status = e.response.status_code
+        try:
+            server_detail = e.response.json()
+        except Exception:
+            server_detail = e.response.text
+
+        diagnostics = {
+            "endpoint": endpoint,
+            "status": status,
+            "params_sent": {k: v for k, v in params.items()},
+            "server_detail": server_detail,
+        }
+
+        hints = []
+        if status == 400:
+            if not params.get("species"):
+                hints.append(
+                    "Missing required parameter 'species' (NCBI taxonomy ID or clade). "
+                    "Example: 9606 (human), 7227 (D. melanogaster), 10090 (mouse), or a STRING clade ID."
+                )
+            if not params.get("identifiers"):
+                hints.append("Missing 'identifiers'.")
+        elif status == 404:
+            hints.append(
+                "The provided identifiers could not be mapped in STRING. "
+                "Use the 'string_resolve_proteins' tool first to resolve ambiguous names. "
+                "If identifiers are not known, try searching with a functional term using the 'string_proteins_for_term' tool."
+            )
+
+        return {
+            "error": {
+                "type": "string_api_error",
+                "message": f"STRING API request failed with status {status}.",
+                "hints": hints or ["Check parameters and retry."],
+                "diagnostics": diagnostics,
+            }
+        }
+
+    except Exception:
+        traceback.print_exc(file=sys.stderr)
+        return {
+            "error": {
+                "type": "unexpected_error",
+                "message": "Unexpected error in STRING API call.",
+                "diagnostics": {"params_sent": params},
+            }
+        }
+
+
 mcp = FastMCP(
     name="STRING Database MCP Server",
 )
-
-
 
 @mcp.tool(title="STRING: Resolves protein identifiers to metadata")
 async def string_resolve_proteins(
@@ -125,18 +186,7 @@ async def string_resolve_proteins(
     endpoint = "/api/json/get_string_ids"
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
-        try:
-            response = await client.post(endpoint, data=params)
-            response.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                return {"error": "No protein mappings were found for the given input identifiers."}
-            raise  # re-raise other errors
-
-        results = response.json()
-        if not results:
-            return {"error": "No protein mappings were found for the given input identifiers."}
-
+        results = await _post_json(client, endpoint, data=params)
         return {"mapped_proteins": results}
 
 
@@ -197,7 +247,7 @@ async def string_interactions_query_set(
 
     If few or no interactions are returned, consider reducing the `required_score`.
 
-    - Expand the names of evidence scores:  
+    - Expand the names of score sources:  
         `nscore` (neighborhood), `fscore` (fusion), `pscore` (phylogenetic profile),  
         `ascore` (coexpression), `escore` (experimental), `dscore` (database), `tscore` (text-mining)
     """
@@ -218,10 +268,9 @@ async def string_interactions_query_set(
 
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
-        response = await client.post(endpoint, data=params)
-        response.raise_for_status()
-
-        res = truncate_network(response.json(), required_score, 'json')
+        results = await _post_json(client, endpoint, data=params)
+        if 'error' in results: return results
+        else: res = truncate_network(results, required_score, 'json')
         return {"network": res}
 
 
@@ -294,10 +343,8 @@ async def string_all_interaction_partners(
     endpoint = "/api/json/interaction_partners"
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
-        response = await client.post(endpoint, data=params)
-        response.raise_for_status()
-
-        return {"interactions": response.json()}
+        results = await _post_json(client, endpoint, data=params)
+        return {"interactions": results}
 
 
 @mcp.tool(title="STRING: Get interaction network image (image URL)")
@@ -381,10 +428,8 @@ async def string_visual_network(
 
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
-        r = await client.post(endpoint, data=params)
-        r.raise_for_status()
-
-        return {"image_url": r.text}
+        results = await _post_json(client, endpoint, data=params)
+        return {"image_url": results}
 
 @mcp.tool(title="STRING: Get interactive network link (web UI)")
 async def string_network_link(
@@ -453,10 +498,8 @@ async def string_network_link(
 
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
-        r = await client.post(endpoint, data=params)
-        r.raise_for_status()
-
-        return {"results": r.json()}
+        results = await _post_json(client, endpoint, data=params)
+        return {"results": results}
 
 
 @mcp.tool(title="STRING: Get homologs in specified target species")
@@ -495,10 +538,8 @@ async def string_homology(
     endpoint = f"/api/json/homology_all"
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
-        r = await client.post(endpoint, data=params)
-        r.raise_for_status()
-
-        return {"results": r.json()}
+        results = await _post_json(client, endpoint, data=params)
+        return {"results": results}
 
 
 @mcp.tool(title="STRING: Get links to interaction evidence pages")
@@ -517,9 +558,10 @@ async def string_interaction_evidence(
     ] = None,
 ) -> dict:
     """
-    Use this tool when the user asks for detailed interaction **evidence** between proteins.
+    Use this tool when the user asks for interaction **evidence** between proteins.
     
     It generates direct links to STRING’s evidence pages, which show the sources and scores (e.g., co-expression, experiments, databases) behind each predicted interaction.
+    Show this link to the user with a markdown. 
     
     You must provide:
     - One query protein (A)
@@ -551,10 +593,6 @@ async def string_enrichment(
         str,
         Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
     ],
-    background_string_identifiers: Annotated[
-        Optional[str],
-        Field(description="Optional. Specify a custom background proteome as STRING identifiers (separated by %0d). DO NOT SET unless user explicitly requests.")
-    ] = None,
     species: Annotated[
         Optional[str],
         Field(description="Optional. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX). DO NOT SET unless user explicitly requests.")
@@ -581,8 +619,6 @@ async def string_enrichment(
       - description: Description of the enriched term
     """
     params = {"identifiers": proteins}
-    if background_string_identifiers is not None:
-        params["background_string_identifiers"] = background_string_identifiers
     if species is not None:
         params["species"] = species
 
@@ -590,11 +626,10 @@ async def string_enrichment(
 
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
-        r = await client.post(endpoint, data=params)
-        r.raise_for_status()
-
-        res = truncate_enrichment(r.json(), 'json')
-        return {"results": res}
+        results = await _post_json(client, endpoint, data=params)
+        if 'error' in results: return results
+        else: results_truncated = truncate_enrichment(results, 'json')
+        return {"results": results_truncated}
 
 
 @mcp.tool(title="STRING: Retrieve functional annotations for proteins")
@@ -630,10 +665,10 @@ async def string_functional_annotation(
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         params = {"identifiers": identifiers, "species": species}
         log_call(endpoint, params)
-        r = await client.post(endpoint, data=params)
-        r.raise_for_status()
-        res = sort_and_truncate_functional_annotation(r.json(), 'json')
-        return {"results": res}  # Functional annotation per protein
+        results = await _post_json(client, endpoint, data=params)
+        if 'error' in results: return results
+        else: results_truncated = sort_and_truncate_functional_annotation(results, 'json')
+        return {"results": results_truncated}  # Functional annotation per protein
 
 
 @mcp.tool(title="STRING: Get enrichment result figure (image URL)")
@@ -718,10 +753,8 @@ async def string_enrichment_image_url(
 
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
-        r = await client.post(endpoint, data=params)
-        r.raise_for_status()
-
-        return {"results": r.json()}
+        results = await _post_json(client, endpoint, data=params)
+        return {"results": results}
 
 
 @mcp.tool(title="STRING: Protein–protein interaction (PPI) enrichment")
@@ -738,10 +771,6 @@ async def string_ppi_enrichment(
         Optional[int],
         Field(description="Optional. Minimum interaction confidence score (0-1000). DO NOT SET unless user explicitly requests.")
     ] = None,
-    background_string_identifiers: Annotated[
-        Optional[str],
-        Field(description="Optional. Specify the background proteome as STRING IDs (separated by %0d). DO NOT SET unless user explicitly requests.")
-    ] = None
 ) -> dict:
     """
     This tool tests if your network is enriched in protein-protein interactions compared to the background proteome-wide distribution (i.e., if your proteins are more functionally connected than expected by chance).
@@ -767,16 +796,12 @@ async def string_ppi_enrichment(
         params["species"] = species
     if required_score is not None:
         params["required_score"] = required_score
-    if background_string_identifiers is not None:
-        params["background_string_identifiers"] = background_string_identifiers
 
     endpoint = f"/api/json/ppi_enrichment"
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
-        r = await client.post(endpoint, data=params)
-        r.raise_for_status()
-
-        return {"results": r.json()}
+        results = await _post_json(client, endpoint, data=params)
+        return {"results": results}
 
 
 @mcp.tool(title="STRING: Retrieve proteins associated with a functional term")
@@ -800,15 +825,16 @@ async def string_proteins_for_term(
     ] = "9606"
 ) -> dict:
     """
-    Retrieve proteins associated with a functional term or descriptive text in a single species.  
+    Retrieve proteins annotated with a functional term or descriptive text in a single species.  
     You can query for tissues, compartments, diseases, processes, pathways, and domains.  
     
     IMPORTANT: For cross-species comparisons, run this tool separately for each species.  
     Select relevant model organisms to search or ask user to provide the selection.
+    The results reflect annotation depth within each category; use caution when interpreting.
     
     If no results are found, try simplifying the query.  
     For tissue queries, follow BRENDA tissue nomenclature and omit the word "tissue"  
-    (e.g. use "skin" instead of "skin tissue").  
+    (e.g. use "skin" instead of "skin tissue").
 
     Output fields:
       - category: Source database of the matched functional term
@@ -825,11 +851,9 @@ async def string_proteins_for_term(
     endpoint = "/api/json/functional_terms"
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
-        r = await client.post(endpoint, data=params)
-        r.raise_for_status()
-
-        res = truncate_functional_terms(r.json(), 'json')
-        return {"results": res}
+        results = await _post_json(client, endpoint, data=params)
+        results_truncated = truncate_functional_terms(results, 'json')
+        return {"results": results_truncated}
 
 
 # ---- MCP server helper functions ----
@@ -986,10 +1010,7 @@ async def string_query_species(
 
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
-        r = await client.post(endpoint, data=params)
-        r.raise_for_status()
-
-        results = r.json()  # ensure only top 10
+        results = await _post_json(client, endpoint, data=params)
         return {"results": results}
 
 
@@ -1000,8 +1021,9 @@ def log_call(endpoint, params):
 
     if log_verbosity['taskid']:
         headers = get_http_headers()
-        client_id = headers.get("x-client-id", "None")
-        task_id = headers.get("x-task-id", "None")
+        client_id = headers.get("x-client-id")
+        task_id = headers.get("x-task-id")
+
         print("TaskId:", task_id, file=sys.stderr)
         print("ClientId:", client_id, file=sys.stderr)
  
