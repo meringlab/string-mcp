@@ -1023,23 +1023,20 @@ async def string_help(
         Field(
             description=(
                 "Optional help topic to display. "
-                "Examples: 'gsea', 'clustering', 'scores', 'large_input', 'missing_proteins'. "
+                "Examples: 'gsea', 'clustering', 'scores', 'large_input' ... "
                 "If omitted, returns a list of available topics."
             )
         ),
     ] = None
 ) -> dict:
     """
-    Provides background explanations and guidance for STRING usage.  
+    Provides explanatory text for STRING features and limitations.  
+    **Use this tool when:**
+      - The user asks about functionality **not available via MCP tools**  
+        (e.g. clustes/modules, GSEA, sequence search, regulatory networks).  
+      - The user request is ambiguous or outside the agent’s scope.  
 
-    Use this tool when:
-    - You are **uncertain about STRING behavior or limitations**.  
-    - A user asks about functionality that is **not available through MCP tools** (e.g. clustering, GSEA, regulatory networks).  
-    - You need to explain concepts such as scores, large inputs, or identifier handling.  
-
-    This tool acts as a **knowledge fallback** to clarify what STRING can and cannot do.  
-    It is not for analysis, but for **help, FAQs, and conceptual guidance**.  
-
+    Topics include: gsea, clustering, scores, large_input, missing_proteins, sequence_search, regulatory_networks.
     """
     if topic is None:
         return {"topics": list(HELP_TOPICS.keys())}
