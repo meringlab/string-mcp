@@ -34,14 +34,15 @@ import json
 import httpx
 import traceback
 
-from collections import defaultdict
 
+from collections import defaultdict
+from typing import Annotated, Optional
+
+from pydantic import Field
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
 
-from typing import Annotated, Optional
-from pydantic import Field
-
+from string_help import HELP_TOPICS
 
 try:
     with open("config/server.config") as f:
@@ -860,7 +861,6 @@ async def string_proteins_for_term(
 
 # ---- MCP server helper functions ----
 
-from collections import defaultdict
 
 def truncate_enrichment(data, is_json):
     term_cutoff = 25   # max terms per category
@@ -1015,6 +1015,44 @@ async def string_query_species(
         return {"results": results}
 
 
+
+@mcp.tool(title="STRING: Help / FAQ")
+async def string_help(
+    topic: Annotated[
+        Optional[str],
+        Field(
+            description=(
+                "Optional help topic to display. "
+                "Examples: 'gsea', 'clustering', 'scores', 'large_input', 'missing_proteins'. "
+                "If omitted, returns a list of available topics."
+            )
+        ),
+    ] = None
+) -> dict:
+    """
+    Provides background explanations and guidance for STRING usage.  
+
+    Use this tool when:
+    - You are **uncertain about STRING behavior or limitations**.  
+    - A user asks about functionality that is **not available through MCP tools** (e.g. clustering, GSEA, regulatory networks).  
+    - You need to explain concepts such as scores, large inputs, or identifier handling.  
+
+    This tool acts as a **knowledge fallback** to clarify what STRING can and cannot do.  
+    It is not for analysis, but for **help, FAQs, and conceptual guidance**.  
+
+    """
+    if topic is None:
+        return {"topics": list(HELP_TOPICS.keys())}
+
+    key = topic.lower()
+    if key not in HELP_TOPICS:
+        return {
+            "error": f"Unknown topic '{topic}'. Available: {', '.join(HELP_TOPICS.keys())}."
+        }
+
+    return {"topic": key, "text": HELP_TOPICS[key]}
+
+
 def log_call(endpoint, params):
 
     if log_verbosity['call']:
@@ -1032,6 +1070,7 @@ def log_call(endpoint, params):
         print("Params:", file=sys.stderr)
         for param, value in params.items():
             print(f'    {param}: {str(value)}', file=sys.stderr)
+
 
 # ---- MCP server runner ----
 
