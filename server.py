@@ -270,8 +270,8 @@ async def string_interactions_query_set(
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
         if 'error' in results: return results
-        else: res = truncate_network(results, required_score, 'json')
-        return {"network": res}
+        else: results = truncate_network(results, required_score, 'json')
+        return {"network": results}
 
 
 
@@ -344,6 +344,8 @@ async def string_all_interaction_partners(
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
+        if 'error' in results: return results
+        else: results = truncate_network(results, required_score, 'json')
         return {"interactions": results}
 
 
@@ -894,41 +896,40 @@ def truncate_enrichment(data, is_json):
     return data
 
 
-def truncate_network(data, input_score_threshold, is_json):
-   
-    size_cutoff = 250
-    original_data_length = len(data)
+def truncate_network(data, input_score_threshold=None, is_json="json", size_cutoff=500):
+    original_len = len(data)
 
-    if input_score_threshold == None or not str(input_score_threshold).isnumeric():
-        input_score_threshold = 400
+    if is_json.lower() != "json":
+        return data
 
-    score_threshold = input_score_threshold
+    # Determine threshold
+    try:
+        threshold = float(input_score_threshold)
+    except (TypeError, ValueError):
+        threshold = 400.0 
 
-    if is_json.lower() == 'json':
- 
-        while len(data) > size_cutoff and score_threshold < 999:
+    if threshold > 1:
+        score_threshold = threshold / 1000.0
+    else:
+        score_threshold = threshold
 
-            for threshold in (400, 700, 900, 999):
-                if score_threshold < threshold:
-                    score_threshold = threshold
-                    break
+    # keep only items above threshold
+    filtered = [row for row in data if row.get("score", 0) >= score_threshold]
 
-            truncated_data = []
-            for row in data:
-                score = row['score']
-                if score >= score_threshold:
-                    truncated_data.append(row)
-            
-            data = truncated_data
-       
-        if len(data) > size_cutoff:
-            data = data[:size_cutoff]
-            data.insert(0, {"note": f"The list was truncated to first {size_cutoff} interactions..."})
+    # sort by score descending
+    filtered.sort(key=lambda r: r.get("score", 0), reverse=True)
 
-        if input_score_threshold != score_threshold:
-            data.insert(0, {"note": f"Required score was adjusted to {score_threshold} to limit the number of interactions."})
+    # truncate if needed
+    if len(filtered) > size_cutoff:
+        filtered = filtered[:size_cutoff]
+        filtered.insert(0, {"note": f"The list was truncated to top {size_cutoff} interactions."})
 
-    return data
+    # add note if threshold was adjusted
+    if len(filtered) < original_len and score_threshold != input_score_threshold:
+        filtered.insert(0, {"note": f"Required score {score_threshold} was applied."})
+
+    return filtered
+
 
 def sort_and_truncate_functional_annotation(data, is_json):
 
