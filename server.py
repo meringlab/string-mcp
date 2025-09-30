@@ -85,17 +85,24 @@ if 'verbosity' in config:
 
 
 async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
-
+    """
+    POST form data to a STRING API endpoint and return JSON.
+    - On success: returns parsed JSON (or {'result': <text>} if body is not JSON).
+    - On handled HTTP errors: returns a structured error dict and logs a concise line + the returned payload.
+    - On unexpected exceptions: prints traceback and returns a structured error dict, also logging what was returned.
+    """
     params = data
 
     try:
         response = await client.post(endpoint, data=params)
         response.raise_for_status()
-        return response.json()  # success
+        try:
+            return response.json()
+        except ValueError:
+            # Successful response but not JSON
+            return {"result": response.text}
 
     except httpx.HTTPStatusError as e:
-        traceback.print_exc(file=sys.stderr)
-
         status = e.response.status_code
         try:
             server_detail = e.response.json()
@@ -116,8 +123,13 @@ async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
                     "Missing required parameter 'species' (NCBI taxonomy ID or clade). "
                     "Example: 9606 (human), 7227 (D. melanogaster), 10090 (mouse), or a STRING clade ID."
                 )
-            if not params.get("identifiers"):
+            elif not params.get("identifiers"):
                 hints.append("Missing 'identifiers'.")
+            else:
+                hints.append(
+                    "Species might be not present in STRING. Search string_query_species with a name "
+                    "or invoke the 'string_help' tool with topic='missing_species' for info how to proceed;"
+                )
         elif status == 404:
             hints.append(
                 "The provided identifiers could not be mapped in STRING. "
@@ -125,7 +137,7 @@ async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
                 "If identifiers are not known, try searching with a functional term using the 'string_proteins_for_term' tool."
             )
 
-        return {
+        error_payload = {
             "error": {
                 "type": "string_api_error",
                 "message": f"STRING API request failed with status {status}.",
@@ -134,15 +146,33 @@ async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
             }
         }
 
-    except Exception:
+        # Log how it was handled (no traceback for expected HTTP errors)
+        sys.stderr.write(
+            f"[handled] HTTPStatusError {status} at {endpoint} with params={params}\n"
+            f"[handled] Returned payload: {json.dumps(error_payload, ensure_ascii=False)}\n"
+        )
+
+        return error_payload
+
+    except Exception as e:
+        # Unexpected failure: keep traceback
         traceback.print_exc(file=sys.stderr)
-        return {
+
+        error_payload = {
             "error": {
                 "type": "unexpected_error",
                 "message": "Unexpected error in STRING API call.",
-                "diagnostics": {"params_sent": params},
+                "diagnostics": {"params_sent": {k: v for k, v in params.items()}},
             }
         }
+
+        # Also log how it was handled
+        sys.stderr.write(
+            f"[handled] Unexpected exception {type(e).__name__} at {endpoint} with params={params}\n"
+            f"[handled] Returned payload: {json.dumps(error_payload, ensure_ascii=False)}\n"
+        )
+
+        return error_payload
 
 
 mcp = FastMCP(
@@ -993,18 +1023,13 @@ async def string_query_species(
     """
     Search for species or clades available in STRING by free-text query
     and return their NCBI taxonomy IDs.
-
+    
     - Use this when the user asks which species or clades are present in STRING,
       or when you need the correct NCBI taxon ID to pass to other tools.
     - The results are limited to the top 50 matches.
-    - When user asks for species list do not list clades.
-
-    Output fields (per match):
-      - ncbiTaxonId: NCBI taxonomy identifier
-      - nameCompact: Short/compact species or clade name
-      - nameOfficial: Official taxonomy name
-      - speciesInClade: List of species in the clade
-
+    - When the user asks for a species list, do not list clades.
+    - If the requested species cannot be matched (i.e. the correct species is not present
+      in the results), **immediately invoke the 'string_help' tool with topic='missing_species'**.
     """
     endpoint = "/api/json/query_species_names"
     params = {"species_text": species_text, 'limit': 50, 'add_sps':'t'}
@@ -1036,7 +1061,7 @@ async def string_help(
         (e.g. clustes/modules, GSEA, sequence search, regulatory networks).  
       - The user request is ambiguous or outside the agent’s scope.  
 
-    Topics include: gsea, clustering, scores, large_input, missing_proteins, sequence_search, regulatory_networks.
+    Topics include: gsea, clustering, scores, large_input, missing_proteins, missing_species, sequence_search, regulatory_networks.
     """
     if topic is None:
         return {"topics": list(HELP_TOPICS.keys())}
