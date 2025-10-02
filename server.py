@@ -683,9 +683,12 @@ async def string_enrichment(
             results_truncated = truncate_enrichment(results, 'json')
 
         if not results_truncated:
-            results_truncated = {'note:' : "No statistically significant enrichment was observed. "
-                                           "In other words, the proteins in the provided list do not appear "
-                                           "to cluster into known pathways or functions more than would be expected by chance."}
+            print("HELLO!!!")
+            results_truncated = [
+                    "AGENT MUST tell the user: No statistically significant enrichment was observed. "
+                    "This means the proteins in their list do not group into known pathways or functions "
+                    "more than would be expected by random chance."
+            ]
 
         log_response_size(results_truncated)
         return {"results": results_truncated}
@@ -1013,8 +1016,8 @@ def sort_and_truncate_functional_annotation(data, is_json):
  
 def truncate_functional_terms(data, is_json):
     term_size_cutoff = 10
-    protein_size_cutoff_top = 500    # cap for top terms
-    protein_size_cutoff_rest = 50    # cap for later terms
+    protein_size_cutoff_top = 100    # cap for top terms
+    protein_size_cutoff_rest = 25    # cap for later terms
 
     if is_json.lower() == 'json':
         filtered_data = []
