@@ -121,10 +121,11 @@ async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
 
         hints = []
         if status == 400:
-            if not params.get("species"):
+            if not params.get("species") or not params.get("species").isnumeric():
                 hints.append(
-                    "Missing required parameter 'species' (NCBI taxonomy ID or clade). "
-                    "Example: 9606 (human), 7227 (D. melanogaster), 10090 (mouse), or a STRING clade ID."
+                    "Valid 'species' parameter required (NCBI taxonomy ID or clade). "
+                    "Example: 9606 (human), 7227 (D. melanogaster), 10090 (mouse), or a STRING clade ID. "
+                    "Agant should clarify with user or assume it is human (9606). "
                 )
             elif not params.get("identifiers"):
                 hints.append("Missing 'identifiers'.")
@@ -680,6 +681,11 @@ async def string_enrichment(
             return results
         else:
             results_truncated = truncate_enrichment(results, 'json')
+
+        if not results_truncated:
+            results_truncated = {'note:' : "No statistically significant enrichment was observed. "
+                                           "In other words, the proteins in the provided list do not appear "
+                                           "to cluster into known pathways or functions more than would be expected by chance."}
 
         log_response_size(results_truncated)
         return {"results": results_truncated}
