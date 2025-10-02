@@ -69,6 +69,7 @@ log_verbosity = {}
 log_verbosity['call'] = False
 log_verbosity['params'] = False
 log_verbosity["taskid"] =  False
+log_verbosity["size"] =  False
 
 
 if 'verbosity' in config:
@@ -77,11 +78,13 @@ if 'verbosity' in config:
         log_verbosity['call'] = True
         log_verbosity['params'] = True
         log_verbosity['taskid'] = True
+        log_verbosity['size'] = True
 
     if config['verbosity'] == 'low':
         log_verbosity['call'] = True
         log_verbosity['params'] = False
         log_verbosity['taskid'] = True
+        log_verbosity['size'] = True
 
 
 async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
@@ -218,6 +221,7 @@ async def string_resolve_proteins(
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
+        log_response_size(results)
         return {"mapped_proteins": results}
 
 
@@ -302,6 +306,7 @@ async def string_interactions_query_set(
         results = await _post_json(client, endpoint, data=params)
         if 'error' in results: return results
         else: results = truncate_network(results, required_score, 'json')
+        log_response_size(results)
         return {"network": results}
 
 
@@ -375,9 +380,14 @@ async def string_all_interaction_partners(
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
-        if 'error' in results: return results
-        else: results = truncate_network(results, required_score, 'json')
-        return {"interactions": results}
+        if 'error' in results:
+            log_response_size(results)
+            return results
+        else:
+            results_truncated = truncate_network(results, required_score, 'json')
+
+        log_response_size(results_truncated)
+        return {"interactions": results_truncated}
 
 
 @mcp.tool(title="STRING: Get interaction network image (image URL)")
@@ -462,6 +472,7 @@ async def string_visual_network(
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
+        log_response_size(results)
         return {"image_url": results}
 
 @mcp.tool(title="STRING: Get interactive network link (web UI)")
@@ -532,6 +543,7 @@ async def string_network_link(
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
+        log_response_size(results)
         return {"results": results}
 
 
@@ -572,6 +584,8 @@ async def string_homology(
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
+
+        log_response_size(results)
         return {"results": results}
 
 
@@ -616,6 +630,7 @@ async def string_interaction_evidence(
         link = f"{base_url}/interaction/{identifier_a}/{identifier_b}?species={species}"
         output.append(link)
 
+    log_response_size(output)
     return {"results": output}
 
 
@@ -660,8 +675,13 @@ async def string_enrichment(
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
-        if 'error' in results: return results
-        else: results_truncated = truncate_enrichment(results, 'json')
+        if 'error' in results:
+            log_response_size(results)
+            return results
+        else:
+            results_truncated = truncate_enrichment(results, 'json')
+
+        log_response_size(results_truncated)
         return {"results": results_truncated}
 
 
@@ -699,8 +719,13 @@ async def string_functional_annotation(
         params = {"identifiers": identifiers, "species": species}
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
-        if 'error' in results: return results
-        else: results_truncated = sort_and_truncate_functional_annotation(results, 'json')
+        if 'error' in results:
+            log_response_size(results)
+            return results
+        else:
+             results_truncated = sort_and_truncate_functional_annotation(results, 'json')
+
+        log_response_size(results_truncated)
         return {"results": results_truncated}  # Functional annotation per protein
 
 
@@ -787,6 +812,7 @@ async def string_enrichment_image_url(
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
+        log_response_size(results)
         return {"results": results}
 
 
@@ -834,6 +860,8 @@ async def string_ppi_enrichment(
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
+
+        log_response_size(results)
         return {"results": results}
 
 
@@ -886,6 +914,7 @@ async def string_proteins_for_term(
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
         results_truncated = truncate_functional_terms(results, 'json')
+        log_response_size(results_truncated)
         return {"results": results_truncated}
 
 
@@ -893,7 +922,7 @@ async def string_proteins_for_term(
 
 
 def truncate_enrichment(data, is_json):
-    term_cutoff = 25   # max terms per category
+    term_cutoff = 20   # max terms per category
     size_cutoff = 15   # max proteins listed per term
 
     if is_json.lower() == 'json':
@@ -926,7 +955,7 @@ def truncate_enrichment(data, is_json):
     return data
 
 
-def truncate_network(data, input_score_threshold=None, is_json="json", size_cutoff=500):
+def truncate_network(data, input_score_threshold=None, is_json="json", size_cutoff=100):
     original_len = len(data)
 
     if is_json.lower() != "json":
@@ -963,10 +992,10 @@ def truncate_network(data, input_score_threshold=None, is_json="json", size_cuto
 
 def sort_and_truncate_functional_annotation(data, is_json):
 
-
-    size_cutoff = 100
+    size_cutoff = 50
 
     if is_json.lower() == 'json':
+        
  
         data = sorted(data, key=lambda x: x["ratio_in_set"], reverse=True)
         
@@ -1008,6 +1037,21 @@ def truncate_functional_terms(data, is_json):
 
     return data
 
+def log_response_size(resp):
+    if log_verbosity['size']:
+        print("Response size:", object_size(resp), file=sys.stderr)
+
+def object_size(obj):
+    if isinstance(obj, str):
+        return len(obj)
+    elif isinstance(obj, (int, float)):
+        return len(str(obj))
+    elif isinstance(obj, dict):
+        return sum(object_size(v) for v in obj.values())
+    elif isinstance(obj, list):
+        return sum(object_size(v) for v in obj)
+    else:
+        return 0
 
 @mcp.tool(title="STRING: Query species and clades in STRING")
 async def string_query_species(
@@ -1037,6 +1081,8 @@ async def string_query_species(
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
+
+        log_response_size(results)
         return {"results": results}
 
 
