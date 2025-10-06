@@ -59,6 +59,13 @@ HELP_TOPICS = {
         "Once uploaded, the user can explore and analyze the proteome through the web interface, download results in bulk, "
         "or provide species identifiers (starting with `STRG`) to this chat interface for further queries."
     ),
+    "proteome_annotation": (
+        "Direct the user to use the **Add species** functionality on the STRING input page. "
+        "By uploading a complete species proteome, STRING will build its interaction network and predict protein functions. "
+        "These predicted functions include assignments to Gene Ontology terms and KEGG pathways. "
+        "Once uploaded, the user can explore and analyze the proteome through the web interface, download results in bulk, "
+        "or provide species identifiers (starting with `STRG`) to this chat interface for further queries."
+    ),
     "sequence_search": (
         "The agent cannot perform searches using raw sequences. "
         "STRING only supports **amino acid sequences**, not nucleotide sequences. "

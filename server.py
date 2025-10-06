@@ -1139,7 +1139,7 @@ async def string_help(
         (e.g. clustes/modules, GSEA, sequence search, regulatory networks).  
       - The user request is ambiguous or outside the agent’s scope.  
 
-    Topics include: gsea, clustering, scores, large_input, missing_proteins, missing_species, sequence_search, regulatory_networks.
+    Topics include: gsea, clustering, scores, large_input, missing_proteins, missing_species, proteome_annotation, sequence_search, regulatory_networks.
     """
     if topic is None:
         return {"topics": list(HELP_TOPICS.keys())}
