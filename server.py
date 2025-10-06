@@ -676,6 +676,7 @@ async def string_enrichment(
     - When calling related tools, use the same input parameters unless otherwise specified.
     - Focus summaries on the top categories and most relevant terms for the results. Always report FDR for each claim.
     - Report FDR as a human-readable value (e.g. 2.3e-5 or 0.023).
+    - Remember to suggest showing an enrichment graph for a specific category of user interest (e.g., GO, KEGG)
 
     Output fields (per enriched term):
       - category: Term category (e.g., GO Process, KEGG pathway)
