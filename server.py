@@ -300,6 +300,12 @@ async def string_interactions_query_set(
     #if show_query_node_labels is not None:
     #    params["show_query_node_labels"] = show_query_node_labels
 
+    add_score_note = False
+    if not required_score and len(proteins.lower().split("%d0")) <= 5:
+        params["required_score"] = 0
+        required_score = 0
+        add_score_note = True
+
     endpoint = "/api/json/network"
 
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
@@ -307,9 +313,13 @@ async def string_interactions_query_set(
         results = await _post_json(client, endpoint, data=params)
         if 'error' in results: return results
         else: results = truncate_network(results, required_score, 'json')
+        if add_score_note:
+            results.insert(0, {"note": (f"The required_score parameter was "
+                "automatically lowered to include all interactions, including low-confidence ones. \n"
+                "IMPORTANT: If the interaction score is low (below 400), inform user about it."
+            )})
         log_response_size(results)
         return {"network": results}
-
 
 
 @mcp.tool(title="STRING: Get all interaction partners for proteins")
@@ -470,9 +480,21 @@ async def string_visual_network(
 
     endpoint = f"/api/json/network_image_url"
 
+
+    add_score_note = False
+    if not required_score and len(proteins.lower().split("%d0")) <= 5:
+        params["required_score"] = 0
+        add_score_note = True
+
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
+
+        if add_score_note:
+            results.insert(0, {"note": (f"The required_score parameter was "
+                "automatically lowered to include all interactions, including low-confidence ones. "
+            )})
+ 
         log_response_size(results)
         return {"image_url": results}
 
