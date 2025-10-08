@@ -995,6 +995,123 @@ async def string_proteins_for_term(
         return {"results": results_truncated}
 
 
+@mcp.tool(title="STRING: Search proteins by amino acid sequence")
+async def string_sequence_search(
+    sequences: Annotated[
+        str,
+        Field(
+            description=(
+                "One or more protein sequences in plain or FASTA format."
+                "For multiple sequences, use standard FASTA headers (lines beginning with '>'). "
+                "Only amino acid sequences are supported — nucleotide sequences are not accepted."
+            )
+        ),
+    ],
+    species: Annotated[
+        str,
+        Field(
+            description=(
+                "NCBI or STRING taxonomy ID. Only one species can be queried per call. "
+                "Default is 9606 (human). Examples: 10090 for mouse, or STRG0AXXXXX for uploaded genomes."
+            )
+        ),
+    ] = "9606",
+) -> dict:
+    """
+    Searches the STRING database using **amino acid sequences** to identify matching proteins.
+
+    - Accepts a single sequence or multiple sequences in FASTA format.
+    - Returns the most similar STRING protein(s) for the specified species, based on sequence similarity.
+    - Use this when the protein identifier is unknown or unresolvable by `string_resolve_proteins`.
+
+    """
+    params = {"sequences": sequences, "species": species}
+
+    endpoint = "/api/json/homology"
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
+        log_call(endpoint, params)
+        results = await _post_json(client, endpoint, data=params)
+        results_truncated, add_trancation_note = truncate_similarity_search(results)
+
+        notes = []
+        if add_trancation_note:
+            notes.append("Results truncated for readability. "
+                         "If you provided multiple sequences, only the top hits are shown per query. "
+                         "Ranking is based on bitscore; lower-scoring hits were omitted.")
+            
+        log_response_size(results_truncated)
+        return {"results": results_truncated}
+
+@mcp.tool(title="STRING: Query species and clades in STRING")
+async def string_query_species(
+    species_text: Annotated[
+        str,
+        Field(description=(
+            "Required. Free-text name of a species or clade to search in STRING. "
+            "Examples: 'human', 'mouse', 'vertebrates'. "
+            "Partial matches are allowed."
+        ))
+    ],
+) -> dict:
+    """
+    Search for species or clades available in STRING by free-text query
+    and return their NCBI taxonomy IDs.
+    
+    - Use this when the user asks which species or clades are present in STRING,
+      or when you need the correct NCBI taxon ID to pass to other tools.
+    - The results are limited to the top 50 matches.
+    - When the user asks for a species list, do not list clades.
+    - If the requested species cannot be matched (i.e. the correct species is not present
+      in the results), **immediately invoke the 'string_help' tool with topic='missing_species'**.
+    """
+    endpoint = "/api/json/query_species_names"
+    params = {"species_text": species_text, 'limit': 50, 'add_sps':'t'}
+
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
+        log_call(endpoint, params)
+        results = await _post_json(client, endpoint, data=params)
+        truncated_results = truncate_species_results(results)
+         
+        log_response_size(truncated_results)
+        return {"results": truncated_results}
+
+
+@mcp.tool(title="STRING: Help / FAQ")
+async def string_help(
+    topic: Annotated[
+        Optional[str],
+        Field(
+            description=(
+                "Optional help topic to display. "
+                "Examples: 'gsea', 'clustering', 'scores', 'large_input' ... "
+                "If omitted, returns a list of available topics."
+            )
+        ),
+    ] = None
+) -> dict:
+    """
+    Provides explanatory text for STRING features and limitations.  
+    **Use this tool when:**
+      - The user asks about functionality **not available via MCP tools**  
+        (e.g. clustes/modules, GSEA, sequence search, regulatory networks).  
+      - The user request is ambiguous or outside the agent’s scope.  
+
+    Topics include: gsea, clustering, scores, large_input, missing_proteins, missing_species, proteome_annotation, sequence_search, regulatory_networks.
+    """
+    if topic is None:
+        return {"topics": list(HELP_TOPICS.keys())}
+
+    key = topic.lower()
+    if key not in HELP_TOPICS:
+        return {
+            "error": f"Unknown topic '{topic}'. Available: {', '.join(HELP_TOPICS.keys())}."
+        }
+
+    return {"topic": key, "text": HELP_TOPICS[key]}
+
+
+
+
 # ---- MCP server helper functions ----
 
 
@@ -1030,6 +1147,71 @@ def truncate_enrichment(data, is_json):
         data = filtered_data
 
     return data
+
+
+def truncate_similarity_search(data):
+
+
+    total_cutoff=50
+
+    if not isinstance(data, list) or not data:
+        return data, False
+
+    total_hits = len(data)
+    if total_hits <= total_cutoff:
+        return data, False
+
+
+    grouped = defaultdict(list)
+    for hit in data:
+        grouped[hit.get("querySequenceName", "unknown")].append(hit)
+
+    n_queries = len(grouped)
+    per_query_cutoff = max(1, int(total_cutoff / n_queries))
+
+    for hits in grouped.values():
+        hits.sort(key=lambda x: x.get("bitscore", 0), reverse=True)
+
+    truncated = []
+    for query, hits in grouped.items():
+        truncated.extend(hits[:per_query_cutoff])
+
+    if len(truncated) <= total_cutoff:
+        return truncated, True
+
+    truncated = [hits[0] for hits in grouped.values()]
+
+    return truncated, True
+
+
+def truncate_species_results(data):
+
+    if not isinstance(data, list) or not data:
+        return data
+
+    truncated = []
+
+    max_per_clade = 200
+
+    for entry in data:
+        entry_copy = dict(entry)
+        clade = entry_copy.get("speciesInClade", [])
+
+        max_per_clade = int(max_per_clade / 2)
+        max_per_clade  = max(5, max_per_clade)
+
+        if isinstance(clade, list):
+            entry_copy["speciesInCladeCount"] = len(clade)
+            
+            if len(clade) > max_per_clade:
+                entry_copy["speciesInClade"] = clade[:max_per_clade]
+                entry_copy["note"] = (
+                    f"Clade truncated to first {max_per_clade}."
+                )
+
+        truncated.append(entry_copy)
+
+    return truncated
 
 
 def truncate_network(data, input_score_threshold=None, size_cutoff=100, is_json="json"):
@@ -1127,72 +1309,6 @@ def object_size(obj):
     else:
         return 0
 
-@mcp.tool(title="STRING: Query species and clades in STRING")
-async def string_query_species(
-    species_text: Annotated[
-        str,
-        Field(description=(
-            "Required. Free-text name of a species or clade to search in STRING. "
-            "Examples: 'human', 'mouse', 'vertebrates'. "
-            "Partial matches are allowed."
-        ))
-    ],
-) -> dict:
-    """
-    Search for species or clades available in STRING by free-text query
-    and return their NCBI taxonomy IDs.
-    
-    - Use this when the user asks which species or clades are present in STRING,
-      or when you need the correct NCBI taxon ID to pass to other tools.
-    - The results are limited to the top 50 matches.
-    - When the user asks for a species list, do not list clades.
-    - If the requested species cannot be matched (i.e. the correct species is not present
-      in the results), **immediately invoke the 'string_help' tool with topic='missing_species'**.
-    """
-    endpoint = "/api/json/query_species_names"
-    params = {"species_text": species_text, 'limit': 50, 'add_sps':'t'}
-
-    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
-        log_call(endpoint, params)
-        results = await _post_json(client, endpoint, data=params)
-
-        log_response_size(results)
-        return {"results": results}
-
-
-
-@mcp.tool(title="STRING: Help / FAQ")
-async def string_help(
-    topic: Annotated[
-        Optional[str],
-        Field(
-            description=(
-                "Optional help topic to display. "
-                "Examples: 'gsea', 'clustering', 'scores', 'large_input' ... "
-                "If omitted, returns a list of available topics."
-            )
-        ),
-    ] = None
-) -> dict:
-    """
-    Provides explanatory text for STRING features and limitations.  
-    **Use this tool when:**
-      - The user asks about functionality **not available via MCP tools**  
-        (e.g. clustes/modules, GSEA, sequence search, regulatory networks).  
-      - The user request is ambiguous or outside the agent’s scope.  
-
-    Topics include: gsea, clustering, scores, large_input, missing_proteins, missing_species, proteome_annotation, sequence_search, regulatory_networks.
-    """
-    if topic is None:
-        return {"topics": list(HELP_TOPICS.keys())}
-
-    key = topic.lower()
-    if key not in HELP_TOPICS:
-        return {
-            "error": f"Unknown topic '{topic}'. Available: {', '.join(HELP_TOPICS.keys())}."
-        }
-
-    return {"topic": key, "text": HELP_TOPICS[key]}
 
 
 def log_call(endpoint, params):
