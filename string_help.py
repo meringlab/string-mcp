@@ -66,13 +66,6 @@ HELP_TOPICS = {
         "Once uploaded, the user can explore and analyze the proteome through the web interface, download results in bulk, "
         "or provide species identifiers (starting with `STRG`) to this chat interface for further queries."
     ),
-    "sequence_search": (
-        "The agent cannot perform searches using raw sequences. "
-        "STRING only supports **amino acid sequences**, not nucleotide sequences. "
-        "This feature is available only on the STRING website.\n\n"
-        "Do not attempt to use `string_resolve_proteins` with sequences — it only works with identifiers. "
-        "On the STRING input page, you can paste an amino acid sequence directly or upload a FASTA file with multiple proteins."
-    ),
     "regulatory_networks": (
         "Regulatory or directed networks are not available in STRING at this time. "
         "All STRING links are **undirected** and represent functional or physical associations, "
