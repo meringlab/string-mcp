@@ -1027,7 +1027,7 @@ async def string_sequence_search(
     """
     params = {"sequences": sequences, "species": species}
 
-    endpoint = "/api/json/homology"
+    endpoint = "/api/json/similarity_search"
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
