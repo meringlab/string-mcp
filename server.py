@@ -300,6 +300,8 @@ async def string_interactions_query_set(
     #if show_query_node_labels is not None:
     #    params["show_query_node_labels"] = show_query_node_labels
 
+    size_cutoff = 100
+    add_size_note = False
     add_score_note = False
     if not required_score and len(proteins.lower().split("%d0")) <= 5:
         params["required_score"] = 0
@@ -312,14 +314,22 @@ async def string_interactions_query_set(
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
         if 'error' in results: return results
-        else: results = truncate_network(results, required_score, 'json')
+        else: results, add_size_note = truncate_network(results, required_score, size_cutoff)
+
+        notes = []
+
         if add_score_note:
-            results.insert(0, {"note": (f"The required_score parameter was "
-                "automatically lowered to include all interactions, including low-confidence ones. \n"
-                "IMPORTANT: If the interaction score is low (below 400), inform user about it."
-            )})
+            notes.append("The required_score parameter was lowered to 0 - showing all interactions."
+                         "IMPORTANT: If the interaction score is low (below 400), inform user about it.")
+        if not len(results):
+             notes.append(f"No interactions found in STRING database at that {required_score} cut-off.")
+
+        if add_size_note:
+            notes.append(f"The list was truncated to top {size_cutoff} interactions.")
+     
         log_response_size(results)
-        return {"network": results}
+
+        return {"notes": notes, "network": results}
 
 
 @mcp.tool(title="STRING: Get all interaction partners for proteins")
@@ -376,6 +386,7 @@ async def string_all_interaction_partners(
     """
 
     limit = 100
+    size_cutoff = 100
 
     params = {"identifiers": identifiers}
     if species is not None:
@@ -395,10 +406,18 @@ async def string_all_interaction_partners(
             log_response_size(results)
             return results
         else:
-            results_truncated = truncate_network(results, required_score, 'json')
+            results_truncated, add_size_note = truncate_network(results, required_score, size_cutoff)
 
+        notes = []
+
+        if add_size_note:
+            notes.append(f"The list was truncated to the top {size_cutoff} interactions.")
+
+        if not len(results_truncated):
+             notes.append(f"No interactions found in STRING database at that {required_score} cut-off. Cosidering lowering the required_score.")
+        
         log_response_size(results_truncated)
-        return {"interactions": results_truncated}
+        return {"notes": notes, "interactions": results_truncated}
 
 
 @mcp.tool(title="STRING: Get interaction network image (image URL)")
@@ -453,7 +472,7 @@ async def string_visual_network(
     
     If few or no interactions are shown, consider lowering `required_score`.  
     
-    This tool returns a direct image URL. Always display the image inline, and ask if the user also wants a link to the interactive STRING network page.  
+    Always ask if the user also wants a link to the interactive STRING network page.  
     
     Input parameters should match those used in related STRING tools (e.g. `string_interactions_query_set`), unless otherwise specified.  
 
@@ -490,13 +509,14 @@ async def string_visual_network(
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
 
+        notes = []
         if add_score_note:
-            results.insert(0, {"note": (f"The required_score parameter was "
-                "automatically lowered to include all interactions, including low-confidence ones. "
-            )})
+            notes.append(f"For small queries the required_score parameter is lowered to 0.")
+        notes.append("Embed the returned image link directly in the assistant response as a markdown image. ")
+        notes.append("Generated image is not an evidence of interactions, use data from string_interactions_query_set to confirm existance of the interaction. ")
  
         log_response_size(results)
-        return {"image_url": results}
+        return {"notes": notes, "image_url": results}
 
 @mcp.tool(title="STRING: Get interactive network link (web UI)")
 async def string_network_link(
@@ -561,13 +581,25 @@ async def string_network_link(
     if hide_disconnected_nodes is not None:
         params["hide_disconnected_nodes"] = hide_disconnected_nodes
 
+
+    add_score_note = False
+    if not required_score and len(proteins.lower().split("%d0")) <= 5:
+        params["required_score"] = 0
+        add_score_note = True
+
     endpoint = f"/api/json/get_link"
 
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
+
+        notes = []
+        if add_score_note:
+            notes.append(f"For small queries the required_score parameter is lowered to 0.")
+        notes.append("Embed the returned link directly in the assistant response as a markdown hyperlink.")
+ 
         log_response_size(results)
-        return {"results": results}
+        return {"notes": notes, "results": results}
 
 
 @mcp.tool(title="STRING: Get homologs in specified target species")
@@ -631,6 +663,7 @@ async def string_interaction_evidence(
     Use this tool when the user asks for interaction **evidence** between proteins.
     
     It generates direct links to STRING’s evidence pages, which show the sources and scores (e.g., co-expression, experiments, databases) behind each predicted interaction.
+    It will provide the link to the evidence page for a pair of proteins even if there is no direct interaction. 
     Show this link to the user with a markdown. 
     
     You must provide:
@@ -653,8 +686,15 @@ async def string_interaction_evidence(
         link = f"{base_url}/interaction/{identifier_a}/{identifier_b}?species={species}"
         output.append(link)
 
+    notes = []
+    notes.append(
+        "The links are generated from templates — their existence is not proof of interaction. "
+        "Use `string_interactions_query_set` to confirm whether the interaction is supported by STRING evidence."
+    )
+    notes.append("Embed the returned link(s) directly in the assistant response as a markdown hyperlink.")
+
     log_response_size(output)
-    return {"results": output}
+    return {"notes": notes, "results": output}
 
 
 
@@ -705,16 +745,14 @@ async def string_enrichment(
         else:
             results_truncated = truncate_enrichment(results, 'json')
 
+        notes = []
         if not results_truncated:
-            print("HELLO!!!")
-            results_truncated = [
-                    "AGENT MUST tell the user: No statistically significant enrichment was observed. "
-                    "This means the proteins in their list do not group into known pathways or functions "
-                    "more than would be expected by random chance."
-            ]
+            notes.append("AGENT MUST tell the user: No statistically significant enrichment was observed. "
+                         "This means the proteins in their list do not group into known pathways or functions "
+                         "more than would be expected by random chance.")
 
         log_response_size(results_truncated)
-        return {"results": results_truncated}
+        return {"notes": notes, "results": results_truncated}
 
 
 @mcp.tool(title="STRING: Retrieve functional annotations for proteins")
@@ -821,7 +859,6 @@ async def string_enrichment_image_url(
 ) -> dict:
     """Retrieves the STRING enrichment figure image *URL* for a set of proteins.
 
-    Only embed the image if a valid URL is present in the response; otherwise, do not embed or show a link.
 
     See the `category` parameter for a list of valid category options.
     """
@@ -845,7 +882,15 @@ async def string_enrichment_image_url(
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
         log_response_size(results)
-        return {"results": results}
+
+        notes = []
+        notes.append(
+            "If a valid URL is present in the response, embed it as markdown in the assistant message. "
+            "If no valid URL is returned, do not embed or display any link."
+        )
+ 
+
+        return {"notes": notes, "results": results}
 
 
 @mcp.tool(title="STRING: Protein–protein interaction (PPI) enrichment")
@@ -987,11 +1032,11 @@ def truncate_enrichment(data, is_json):
     return data
 
 
-def truncate_network(data, input_score_threshold=None, is_json="json", size_cutoff=100):
+def truncate_network(data, input_score_threshold=None, size_cutoff=100, is_json="json"):
     original_len = len(data)
 
     if is_json.lower() != "json":
-        return data
+        return data, None
 
     # Determine threshold
     try:
@@ -1011,15 +1056,12 @@ def truncate_network(data, input_score_threshold=None, is_json="json", size_cuto
     filtered.sort(key=lambda r: r.get("score", 0), reverse=True)
 
     # truncate if needed
+    add_size_note = False
     if len(filtered) > size_cutoff:
         filtered = filtered[:size_cutoff]
-        filtered.insert(0, {"note": f"The list was truncated to top {size_cutoff} interactions."})
+        add_size_note = True
 
-    # add note if threshold was adjusted
-    if len(filtered) < original_len and score_threshold != input_score_threshold:
-        filtered.insert(0, {"note": f"Required score {score_threshold} was applied."})
-
-    return filtered
+    return filtered, add_size_note
 
 
 def sort_and_truncate_functional_annotation(data, is_json):
