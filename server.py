@@ -683,7 +683,7 @@ async def string_interaction_evidence(
 
     output = []
     for identifier_b in identifiers_b.split("%0d"):
-        link = f"{base_url}/interaction/{identifier_a}/{identifier_b}?species={species}"
+        link = f"{base_url}/interaction/{identifier_a}/{identifier_b}?species={species}&suppress_disambiguation=1"
         output.append(link)
 
     notes = []
