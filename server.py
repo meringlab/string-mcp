@@ -1014,7 +1014,7 @@ async def string_sequence_search(
         Field(
             description=(
                 "Required. NCBI or STRING taxonomy ID. You can query with a clade or species. "
-                "eg.g 2 Bacteria, 7742 for vertables, 511145 for E.coli"
+                "eg.g 2 for bacteria, 7742 for vertebrates, 511145 for E. coli"
             )
         ),
     ] = 9606
