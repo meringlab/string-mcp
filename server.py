@@ -55,6 +55,7 @@ except (FileNotFoundError, json.JSONDecodeError) as e:
 base_url = config.get("base_url")
 server_port = int(config.get("server_port", 0))
 
+
 if not base_url:
     raise ValueError("Missing required config: 'base_url', e.g. 'https://version-12-0.string-db.org' ")
 
@@ -62,6 +63,7 @@ if not server_port:
     raise ValueError("Missing required config: 'server_port', e.g. '57416' ")
 
 timeout = float(config.get("timeout", 30))
+
 
 ## logging verbosity ## 
 
@@ -1011,11 +1013,11 @@ async def string_sequence_search(
         str,
         Field(
             description=(
-                "NCBI or STRING taxonomy ID. Only one species can be queried per call. "
-                "Default is 9606 (human). Examples: 10090 for mouse, or STRG0AXXXXX for uploaded genomes."
+                "Required. NCBI or STRING taxonomy ID. You can query with a clade or species. "
+                "eg.g 2 Bacteria, 7742 for vertables, 511145 for E.coli"
             )
         ),
-    ] = "9606",
+    ] = 9606
 ) -> dict:
     """
     Searches the STRING database using **amino acid sequences** to identify matching proteins.
@@ -1028,7 +1030,7 @@ async def string_sequence_search(
     params = {"sequences": sequences, "species": species}
 
     endpoint = "/api/json/similarity_search"
-    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout*2) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
         results_truncated, add_trancation_note = truncate_similarity_search(results)
@@ -1047,8 +1049,8 @@ async def string_query_species(
     species_text: Annotated[
         str,
         Field(description=(
-            "Required. Free-text name of a species or clade to search in STRING. "
-            "Examples: 'human', 'mouse', 'vertebrates'. "
+            "Required. Free-text name of a species, clade or taxon id to search in STRING. "
+            "Examples: 'human', 'mouse', 'vertebrates', '511145' "
             "Partial matches are allowed."
         ))
     ],
@@ -1059,6 +1061,7 @@ async def string_query_species(
     
     - Use this when the user asks which species or clades are present in STRING,
       or when you need the correct NCBI taxon ID to pass to other tools.
+    - use this to resolve NCBI taxons IDs to their scientific names.
     - The results are limited to the top 50 matches.
     - When the user asks for a species list, do not list clades.
     - If the requested species cannot be matched (i.e. the correct species is not present
