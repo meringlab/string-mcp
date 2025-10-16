@@ -426,7 +426,11 @@ async def string_all_interaction_partners(
 async def string_visual_network(
     proteins: Annotated[
         str,
-        Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
+        Field(description="Required. One or more protein IDs (optionally with values). Example:\n"
+                          "PTEN 0.234\nSMO -3.445\n"
+                          "Use newline (%0d) between entries."
+                          "You can provide with the number SMO 0.123 PTEN\t-0.2"
+        )
     ],
     species: Annotated[
         str,
@@ -472,6 +476,11 @@ async def string_visual_network(
     - For multiple proteins: includes all known interactions **within the query set**.  
     - If the user asks for "physical interactions", "complexes", or "binding", set `network_type` to "physical".  
     
+    If numeric values are provided (e.g. PTEN 0.234), they will be visualized as halos around the nodes:
+    - Positive → blue
+    - Negative → red
+    - Magnitude → halo opacity
+
     If few or no interactions are shown, consider lowering `required_score`.  
     
     Always ask if the user also wants a link to the interactive STRING network page.  
@@ -524,7 +533,12 @@ async def string_visual_network(
 async def string_network_link(
     proteins: Annotated[
         str,
-        Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
+        Field(description="Required. One or more protein IDs (optionally with values). Example:\n"
+                          "PTEN 0.234\nSMO -3.445\n"
+                          "Use newline (%0d) between entries."
+                          "You can provide with the number SMO 0.123 PTEN\t-0.2"
+        )
+
     ],
     species: Annotated[
         str,
@@ -565,6 +579,8 @@ async def string_network_link(
     - If no or very few interactions are returned, try lowering the required_score parameter.
     - If the user refers to "physical interactions", "complexes", or "binding", set the network type to "physical".
 
+    If numeric values are provided (e.g. PTEN 0.234), they will be visualized as halos around the nodes.
+ 
     Always display the link as markdown (hide the raw URL).  
     When calling related tools, use the same input parameters unless otherwise specified.
 
