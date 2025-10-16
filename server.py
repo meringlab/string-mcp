@@ -479,7 +479,7 @@ async def string_visual_network(
     If numeric values are provided (e.g. PTEN 0.234), they will be visualized as halos around the nodes:
     - Positive → blue
     - Negative → red
-    - Magnitude → halo opacity
+    - Magnitude → saturation
 
     If few or no interactions are shown, consider lowering `required_score`.  
     
