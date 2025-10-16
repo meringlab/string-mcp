@@ -38,7 +38,9 @@ HELP_TOPICS = {
         "as this reduces biological signal. Channels also cannot be removed by the agent — only through the STRING web interface (settings tab).\n\n"
         "The combination uses a Bayesian scheme: a prior is removed from each channel, scores are combined multiplicatively, "
         "and the prior is added back once. The result is a probability-like confidence score.\n\n"
-        "For details see: von Mering et al., Nucleic Acids Res. 2005."
+        "For details see: von Mering et al., Nucleic Acids Res. 2005.\n\n"
+  
+        "For details about meaning of the lines in the network refer to topic: 'line_colors'."
     ),
     "missing_proteins": (
         "STRING accepts many identifiers (gene symbols, UniProt, Ensembl). "
@@ -71,6 +73,53 @@ HELP_TOPICS = {
         "All STRING links are **undirected** and represent functional or physical associations, "
         "not regulatory direction. \n\n"
         "Apologies for the inconvenience — regulatory network support is planned for a future STRING release."
+    ),
+    "how_to_use_string": (
+        "Do not describe the usage of the MCP / Agent, but focus on general STRING usage.\n\n"
+        "STRING is a database for exploring protein–protein interactions and functional enrichment. "
+        "It is designed to reveal how proteins work together in biological pathways, complexes, or cellular processes.\n\n"
+    
+        "To begin, provide a single protein or a set of proteins of your interest, or from your experiment. "
+        "STRING will retrieve known and predicted interaction partners and display them as a network.\n\n"
+    
+        "Beyond visualization, STRING analyzes your input to find functional patterns. Under the *Analysis* tab, "
+        "you will see enrichment results for pathways, Gene Ontology terms, protein domains, and other annotation sources. "
+        "These enrichments help identify common biological processes shared by your proteins.\n\n"
+    
+        "STRING also offers clustering (MCL or k-means), which groups proteins into modules based on network connectivity. "
+        "These clusters can represent protein complexes, signaling pathways, or co-regulated functional units.\n\n"
+    
+        "At the STRING input page, above each input box, you will find example protein sets. "
+        "You can click these to explore STRING’s capabilities before submitting your own data.\n\n"
+    
+        "For additional guidance visit the full help pages:\n"
+        "https://string-db.org/cgi/help?"
+    ),
+    "line_colors": (
+        "STRING networks can be visualized in two modes: **Confidence** and **Evidence**.\n\n"
+    
+        "**Confidence view**:\n"
+        "- All edges use a single color.\n"
+        "- Line **thickness** reflects the confidence score (0–1000).\n\n"
+    
+        "**Evidence view** (default):\n"
+        "Edges are colored according to the type of supporting evidence. All edges have equal thickness.\n\n"
+        
+        "**Known interactions**:\n"
+        "- From curated databases — grey / blue-grey\n"
+        "- Experimentally determined — violet\n\n"
+        
+        "**Predicted interactions**:\n"
+        "- Gene neighborhood — dark green\n"
+        "- Gene fusions — red\n"
+        "- Gene co-occurrence — dark blue\n\n"
+        
+        "**Others**:\n"
+        "- Textmining — light green (lime)\n"
+        "- Co-expression — black\n"
+        "- Protein homology — light blue\n\n"
+        
+        "**Note:** Protein homology is shown for reference only and is *not included* in the combined confidence score."
     ),
 }
 

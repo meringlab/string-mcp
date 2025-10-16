@@ -1098,24 +1098,24 @@ async def string_query_species(
 @mcp.tool(title="STRING: Help / FAQ")
 async def string_help(
     topic: Annotated[
-        Optional[str],
+        str,
         Field(
             description=(
-                "Optional help topic to display. "
-                "Examples: 'gsea', 'clustering', 'scores', 'large_input' ... "
-                "If omitted, returns a list of available topics."
+                "Help topic to display. Choose one of:\n"
+                "  how_to_use_string, gsea, clustering, large_input, scores,\n"
+                "  missing_proteins, missing_species, proteome_annotation,\n"
+                "  regulatory_networks, line_colors\n\n"
             )
-        ),
-    ] = None
-) -> dict:
+        )
+    ],
+ ) -> dict:
     """
-    Provides explanatory text for STRING features and limitations.  
-    **Use this tool when:**
-      - The user asks about functionality **not available via MCP tools**  
-        (e.g. clustes/modules, GSEA, sequence search, regulatory networks).  
-      - The user request is ambiguous or outside the agent’s scope.  
-
-    Topics include: gsea, clustering, scores, large_input, missing_proteins, missing_species, proteome_annotation, sequence_search, regulatory_networks.
+    Provides explanatory text for STRING features and limitations.
+    
+    Use this tool when the user question involves:
+      - What is STRING is or how to use the tool (how_to_use_string)
+      - functionality not available via MCP tools (e.g. clustering, GSEA, regulatory networks, large datasets).
+      - meaning of the lines in the network (line_colors)
     """
     if topic is None:
         return {"topics": list(HELP_TOPICS.keys())}
