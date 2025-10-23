@@ -31,9 +31,10 @@ License: CC-BY-4.0
 
 import sys
 import json
+import time
 import httpx
+import asyncio
 import traceback
-
 
 from collections import defaultdict
 from typing import Annotated, Optional
@@ -62,7 +63,7 @@ if not base_url:
 if not server_port:
     raise ValueError("Missing required config: 'server_port', e.g. '57416' ")
 
-timeout = float(config.get("timeout", 30))
+timeout = float(config.get("timeout", 100))
 
 
 ## logging verbosity ## 
@@ -92,11 +93,23 @@ if 'verbosity' in config:
 async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
     """
     POST form data to a STRING API endpoint and return JSON.
-    - On success: returns parsed JSON (or {'result': <text>} if body is not JSON).
-    - On handled HTTP errors: returns a structured error dict and logs a concise line + the returned payload.
-    - On unexpected exceptions: prints traceback and returns a structured error dict, also logging what was returned.
+    Emits periodic 'ping' SSE events to keep upstream connections alive (e.g. Cloudflare).
     """
     params = data
+    ping_interval = 25  # seconds between pings
+
+    async def _ping_loop(done_event: asyncio.Event):
+        try:
+            while not done_event.is_set():
+                await asyncio.sleep(ping_interval)
+                if not done_event.is_set():
+                    print(json.dumps({"type": "ping", "message": "waiting..."}), flush=True)
+                    print("[_post_json] ping (still waiting for response)", file=sys.stderr, flush=True)
+        except asyncio.CancelledError:
+            pass
+
+    done_event = asyncio.Event()
+    ping_task = asyncio.create_task(_ping_loop(done_event))
 
     try:
         response = await client.post(endpoint, data=params)
@@ -104,8 +117,27 @@ async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
         try:
             return response.json()
         except ValueError:
-            # Successful response but not JSON
             return {"result": response.text}
+
+    except httpx.ReadTimeout:
+        # Specific handling for slow or non-responsive STRING API calls
+        sys.stderr.write(f"[timeout] STRING API request timed out at {endpoint}\n")
+        error_payload = {
+            "error": {
+                "type": "timeout_error",
+                "message": f"STRING API request to {endpoint} timed out.",
+                "hints": [
+                    "Try narrowing the taxon",
+                    "Limiting the number of proteins",
+                    "Requery the API again",
+                ],
+                "diagnostics": {"params_sent": {k: v for k, v in params.items()}},
+            }
+        }
+        sys.stderr.write(
+            f"[handled] Returned payload after timeout: {json.dumps(error_payload, ensure_ascii=False)}\n"
+        )
+        return error_payload
 
     except httpx.HTTPStatusError as e:
         status = e.response.status_code
@@ -127,20 +159,18 @@ async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
                 hints.append(
                     "Valid 'species' parameter required (NCBI taxonomy ID or clade). "
                     "Example: 9606 (human), 7227 (D. melanogaster), 10090 (mouse), or a STRING clade ID. "
-                    "Agant should clarify with user or assume it is human (9606). "
                 )
             elif not params.get("identifiers"):
                 hints.append("Missing 'identifiers'.")
             else:
                 hints.append(
                     "Species might be not present in STRING. Search string_query_species with a name "
-                    "or invoke the 'string_help' tool with topic='missing_species' for info how to proceed;"
+                    "or invoke 'string_help' with topic='missing_species'."
                 )
         elif status == 404:
             hints.append(
                 "The provided identifiers could not be mapped in STRING. "
-                "Use the 'string_resolve_proteins' tool first to resolve ambiguous names. "
-                "If identifiers are not known, try searching with a functional term using the 'string_proteins_for_term' tool."
+                "Use 'string_resolve_proteins' first to resolve ambiguous names."
             )
 
         error_payload = {
@@ -152,18 +182,14 @@ async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
             }
         }
 
-        # Log how it was handled (no traceback for expected HTTP errors)
         sys.stderr.write(
             f"[handled] HTTPStatusError {status} at {endpoint} with params={params}\n"
             f"[handled] Returned payload: {json.dumps(error_payload, ensure_ascii=False)}\n"
         )
-
         return error_payload
 
     except Exception as e:
-        # Unexpected failure: keep traceback
         traceback.print_exc(file=sys.stderr)
-
         error_payload = {
             "error": {
                 "type": "unexpected_error",
@@ -171,14 +197,16 @@ async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
                 "diagnostics": {"params_sent": {k: v for k, v in params.items()}},
             }
         }
-
-        # Also log how it was handled
         sys.stderr.write(
             f"[handled] Unexpected exception {type(e).__name__} at {endpoint} with params={params}\n"
             f"[handled] Returned payload: {json.dumps(error_payload, ensure_ascii=False)}\n"
         )
-
         return error_payload
+
+    finally:
+        # stop the ping loop cleanly
+        done_event.set()
+        ping_task.cancel()
 
 
 mcp = FastMCP(
@@ -1008,6 +1036,7 @@ async def string_proteins_for_term(
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
+        if 'error' in results: return results 
         results_truncated = truncate_functional_terms(results, 'json')
         log_response_size(results_truncated)
         return {"results": results_truncated}
@@ -1127,8 +1156,6 @@ async def string_help(
         }
 
     return {"topic": key, "text": HELP_TOPICS[key]}
-
-
 
 
 # ---- MCP server helper functions ----
