@@ -57,6 +57,9 @@ python server.py
 
 ## License / Citation
 
-The STRING MCP server is released under the [CC-BY-4.0 license](https://creativecommons.org/licenses/by/4.0/).  
-You are free to share and adapt the code with attribution.
-If you use this code in your work, please also cite the latest [STRING manuscript](https://string-db.org/cgi/about?footer_active_subpage=references).
+The STRING MCP server source code is released under the [MIT License](https://opensource.org/licenses/MIT).  
+Associated data and outputs are released under the [CC BY 4.0 License](https://creativecommons.org/licenses/by/4.0/).  
+You are free to use, share, and modify the code with proper attribution.
+
+If you use this code or data in your work, please also cite the latest [STRING manuscript](https://string-db.org/cgi/about?footer_active_subpage=references).
+
