@@ -1,7 +1,11 @@
 # STRING MCP Server
 
-Exposes [STRING](https://string-db.org) database functionality as an MCP (Model Context Protocol) server.  
-This server wraps STRING API endpoints and makes them available as MCP tools for use with AI agents or other MCP-compatible clients.
+Exposes [STRING database](https://string-db.org) functionality as a **Model Context Protocol (MCP)** server.  
+This implementation allows AI agents and other MCP-compatible clients to access STRING data through a structured and self-describing interface.
+
+It is build on top of the STRING API but adapted specifically for model-based use, with emphasis on conciseness and context efficiency. The server controls the amount and type of data so that responses stay within the reasoning limits of large language models. It also adapts the structure and adds metadata to support more consistent parsing and interpretation by agentic systems.
+
+For reproducible workflows and large-scale integration, use the [STRING API documentation](https://string-db.org/cgi/help?subpage=api).
 
 ---
 
