@@ -59,6 +59,58 @@ pip install -r requirements.txt
 python server.py
 ```
 
+## Docker
+
+1. Ensure you have a `config/server.config` file (copy from `config/server.config.example` if needed):
+   ```bash
+   cp config/server.config.example config/server.config
+   ```
+
+2. Build the image:
+   ```bash
+   docker build -t string-mcp .
+   ```
+
+3. Run the container:
+   
+   **Linux/macOS:**
+   ```bash
+   docker run -p 57416:57416 -v $(pwd)/config:/app/config:ro string-mcp
+   ```
+   
+   **Windows PowerShell:**
+   ```powershell
+   docker run -p 57416:57416 -v ${PWD}/config:/app/config:ro string-mcp
+   ```
+   
+   **Windows Command Prompt:**
+   ```cmd
+   docker run -p 57416:57416 -v %cd%/config:/app/config:ro string-mcp
+   ```
+
+   To run in detached mode:
+   ```bash
+   # Linux/macOS
+   docker run -d -p 57416:57416 -v $(pwd)/config:/app/config:ro --name string-mcp-server string-mcp
+   
+   # Windows PowerShell
+   docker run -d -p 57416:57416 -v ${PWD}/config:/app/config:ro --name string-mcp-server string-mcp
+   ```
+
+   The `-v` flag mounts your local config directory so you can customize settings without rebuilding the image.
+   
+   **Note:** If you don't need to modify the config, you can omit the volume mount and the container will use the default config from the image.
+
+4. Stop the container (if running in detached mode):
+   ```bash
+   docker stop string-mcp-server
+   docker rm string-mcp-server
+   ```
+
+**Note:** The Docker container will use the configuration from `config/server.config`. If this file doesn't exist, the container will copy from `server.config.example` on first run.
+
+**Note on errors:** You may see `anyio.ClosedResourceError` messages in the logs - these are expected and handled internally by the MCP server. They don't affect functionality. The server is working correctly when you see successful HTTP responses (200 OK, 202 Accepted).
+
 ## License / Citation
 
 The STRING MCP server source code is released under the [MIT License](https://opensource.org/licenses/MIT).  
