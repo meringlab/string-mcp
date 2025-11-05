@@ -165,12 +165,14 @@ async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
             else:
                 hints.append(
                     "Species might be not present in STRING. Search string_query_species with a name "
-                    "or invoke 'string_help' with topic='missing_species'."
+                    "or invoke 'string_help' with topic='missing_species'. "
+                    "For multiple-protein queries make sure the delimiter is '%0d'. "
                 )
         elif status == 404:
             hints.append(
                 "The provided identifiers could not be mapped in STRING. "
-                "Use 'string_resolve_proteins' first to resolve ambiguous names."
+                "Use 'string_resolve_proteins' first to resolve ambiguous names. "
+                "For multiple-protein queries make sure the delimiter is '%0d'. "
             )
 
         error_payload = {
