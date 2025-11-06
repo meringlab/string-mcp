@@ -234,11 +234,19 @@ async def string_resolve_proteins(
                 "(e.g. STRG0AXXXXX for uploaded genomes)."
             )
         )
+    ] = None,
+    show_sequence: Annotated[
+        str,
+        Field(
+            description=(
+                "Optional. '1' to include sequences (default '0'). Use only if the user requests sequence data."
+            )
+        )
     ] = None
 ) -> dict:
     """
     Maps one or more protein identifiers to their corresponding STRING metadata, including:
-    gene symbol, description, internal STRING ID, and species information.
+    gene symbol, description, sequence, domains, species, and internal STRING ID.
 
     This method is useful for translating raw identifiers into readable, annotated protein entries.
 
@@ -246,9 +254,12 @@ async def string_resolve_proteins(
     """
 
    
-    params = {"identifiers": proteins, "echo_query": 1}
+    params = {"identifiers": proteins, "echo_query": 1, 'add_domains': 1}
     if species is not None:
         params["species"] = species
+
+    if show_sequence is not None:
+        params["add_sequence"] = show_sequence
 
     endpoint = "/api/json/get_string_ids"
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
@@ -256,7 +267,6 @@ async def string_resolve_proteins(
         results = await _post_json(client, endpoint, data=params)
         log_response_size(results)
         return {"mapped_proteins": results}
-
 
 
 @mcp.tool(title="STRING: Get interactions within query set")
