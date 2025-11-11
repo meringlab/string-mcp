@@ -718,23 +718,27 @@ async def string_interaction_evidence(
     ] = None,
 ) -> dict:
     """
-    Use this tool when the user asks for interaction **evidence** between proteins.
+    Retrieves direct links to STRING evidence pages for protein–protein interactions.
     
-    It generates direct links to STRING’s evidence pages, which show the sources and scores (e.g., co-expression, experiments, databases) behind each predicted interaction.
-    It will provide the link to the evidence page for a pair of proteins even if there is no direct interaction. 
-    Show this link to the user with a markdown. 
+    Use this tool when the user asks for **details**, **evidence**, or **experimental validation** of an interaction between proteins.
     
-    You must provide:
-    - One query protein (A)
-    - One or more target proteins (B), separated by `%0d`
-    - The species (NCBI taxon ID)
+    It returns URLs linking to STRING’s evidence pages, which display the underlying data sources 
+    (experimental results, publications, and curated databases) supporting each predicted interaction.  
+    NOTE: A link is returned for every A–B protein pair, **even if no evidence or interaction exists** — the link itself should not be interpreted as proof of interaction.
     
-    This tool is especially helpful when users ask:
+    Show each link to the user as a markdown hyperlink.
+    
+    Parameters:
+    - **identifier_a**: Query protein identifier (Protein A)
+    - **identifiers_b**: One or more target protein identifiers (Protein B), separated by `%0d`
+    - **species**: NCBI taxonomy ID (e.g. `9606` for human or `10090` for mouse)
+    
+    Typical user questions that should trigger this tool:
     - "Can you show me the evidence for this interaction?"
+    - "Show me the details supporting this interaction."
     - "What supports the interaction between TP53 and MDM2?"
-    - "Where can I see experimental validation for these pairs?"
-    
-    Each returned link corresponds to one A–B interaction.
+    - "Is there experimental validation for this interaction?"
+    - "Where can I find the STRING evidence page for this pair?"
     """
 
     identifiers_b = identifiers_b.replace('%0D', '%0d')
