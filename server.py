@@ -611,9 +611,8 @@ async def string_network_clustering(
         Optional[float],
         Field(description=(
             "Optional. Controls the clustering granularity:\n"
-            "- For 'MCL': inflation parameter (1.0–10.0); higher values produce more, smaller clusters.\n"
-            "- For 'kmeans': number of clusters (integer ≥2).\n"
-            "Default: 3."
+            "- For 'MCL': inflation parameter (1.0–10.0, default 3.0); higher values produce more, smaller clusters.\n"
+            "- For 'kmeans': number of clusters (integer ≥2, default 3).\n"
         ))
     ] = None,
     network_flavor: Annotated[
