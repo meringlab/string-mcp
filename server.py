@@ -504,10 +504,10 @@ async def string_visual_network(
         Optional[int],
         Field(description="Optional. 1 to center protein names on nodes, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
     ] = None,
-    custom_label_font_size: Annotated[
-        Optional[int],
-        Field(description="Optional. Change font size of protein names (from 5 to 50, default: 12). DO NOT SET unless user explicitly requests.")
-    ] = None
+    #custom_label_font_size: Annotated[
+    #    Optional[int],
+    #    Field(description="Optional. Change font size of protein names (from 5 to 50, default: 12). DO NOT SET unless user explicitly requests.")
+    #] = None
 ) -> dict:
     """
     Retrieves a URL to a **STRING interaction network image** for one or more proteins.  
@@ -545,8 +545,8 @@ async def string_visual_network(
     #    params["show_query_node_labels"] = show_query_node_labels
     if center_node_labels is not None:
         params["center_node_labels"] = center_node_labels
-    if custom_label_font_size is not None:
-        params["custom_label_font_size"] = custom_label_font_size
+    #if custom_label_font_size is not None:
+    #    params["custom_label_font_size"] = custom_label_font_size
 
     endpoint = f"/api/json/network_image_url"
 
@@ -567,7 +567,162 @@ async def string_visual_network(
         notes.append("Generated image is not an evidence of interactions, use data from string_interactions_query_set to confirm existance of the interaction. ")
  
         log_response_size(results)
+
         return {"notes": notes, "image_url": results}
+
+
+@mcp.tool(title="STRING: Perform network clustering")
+async def string_network_clustering(
+    proteins: Annotated[
+        str,
+        Field(description=(
+            "Required. One or more protein identifiers (optionally with values). Example:\n"
+            "PTEN 0.234\nSMO -3.445\n"
+            "Separate entries with newline (%0d). "
+            "Numeric values (e.g. expression data) can be provided after identifiers."
+        ))
+    ],
+    species: Annotated[
+        str,
+        Field(description="Required. NCBI/STRING taxonomy ID (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
+    ] = None,
+    extend_network: Annotated[
+        Optional[int],
+        Field(description="Optional. Add specified number of additional nodes to the network based on their interaction scores (default: 0, or 10 for single-protein queries).")
+    ] = None,
+    required_score: Annotated[
+        Optional[int],
+        Field(description="Optional. Minimum interaction confidence score (0–1000). Lower values show more edges. Default: 400.")
+    ] = None,
+    network_type: Annotated[
+        Optional[str],
+        Field(description='Optional. Network type: "functional" (default) or "physical" (co-complex).')
+    ] = None,
+    clustering_algorithm: Annotated[
+        Optional[str],
+        Field(description=(
+            "Optional. Clustering algorithm: 'MCL' or 'kmeans'.\n"
+            "- 'MCL' (Markov Cluster Algorithm) identifies densely connected subnetworks based on connectivity flow; "
+            "- 'kmeans' partitions proteins into a fixed number of clusters, useful when explicit cluster counts are desired; "
+       ))
+    ] = None,
+    
+    clustering_parameter: Annotated[
+        Optional[float],
+        Field(description=(
+            "Optional. Controls the clustering granularity:\n"
+            "- For 'MCL': inflation parameter (1.0–10.0); higher values produce more, smaller clusters.\n"
+            "- For 'kmeans': number of clusters (integer ≥2).\n"
+            "Default: 3."
+        ))
+    ] = None,
+    network_flavor: Annotated[
+        Optional[str],
+        Field(description='Optional. Edge display style: "evidence" (default), "confidence", or "actions".')
+    ] = None,
+    hide_disconnected_nodes: Annotated[
+        Optional[int],
+        Field(description="Optional. 1 to hide unconnected nodes, 0 otherwise (default: 0). Use only if user explicitly requests it.")
+    ] = None,
+    center_node_labels: Annotated[
+        Optional[int],
+        Field(description="Optional. 1 to center protein labels on nodes, 0 otherwise (default: 0). Use only if user explicitly requests it.")
+    ] = None,
+) -> dict:
+    """
+    Performs **network clustering** on a STRING interaction network and returns both a **network image URL**
+    and details about each detected cluster.
+    
+    Use the same parameters as in the network creation step to ensure consistency.
+    If the network already contains disconnected subgraphs, the resulting number of clusters may differ from the requested value.
+    
+    Dashed lines represent connections between clusters, while solid lines indicate interactions within clusters.
+    
+    Notes:
+      - For small queries (≤5 proteins), the `required_score` parameter is automatically lowered to 0.
+      - If only a single cluster is produced, try increasing `required_score`, adjusting the inflation parameter,
+        or switching to `kmeans` for small, highly interconnected networks.
+
+
+    """
+
+    params = {"identifiers": proteins}
+    if species is not None:
+        params["species"] = species
+    if extend_network is not None:
+        params["add_white_nodes"] = extend_network
+    if required_score is not None:
+        params["required_score"] = required_score
+    if network_type is not None:
+        params["network_type"] = network_type
+    if network_flavor is not None:
+        params["network_flavor"] = network_flavor
+    if hide_disconnected_nodes is not None:
+        params["hide_disconnected_nodes"] = hide_disconnected_nodes
+
+    if clustering_algorithm and clustering_algorithm.lower() in ['mcl', 'kmeans']:
+        params['network_clustering_algorithm'] = clustering_algorithm
+    else:
+        params['network_clustering_algorithm'] = 'MCL'
+
+    if clustering_parameter and clustering_algorithm == 'kmeans':
+        try:
+            clustering_parameter = float(int(clustering_parameter))
+        except Exception:
+            clustering_parameter = 3
+    elif clustering_parameter and clustering_algorithm == 'MCL':
+        try:
+            clustering_parameter = float(clustering_parameter)
+            clustering_parameter = max(1, min(10, clustering_parameter))
+        except Exception:
+            clustering_parameter = 3
+    elif not clustering_parameter:
+        clustering_parameter = 3
+
+    params['network_clustering_param'] = clustering_parameter
+
+    if center_node_labels is not None:
+        params["center_node_labels"] = center_node_labels
+
+    endpoint = f"/api/json/network_image_url"
+
+    add_score_note = False
+    if not required_score and len(proteins.lower().split("%0d")) <= 5:
+        params["required_score"] = 0
+        add_score_note = True
+
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
+        log_call(endpoint, params)
+        results = await _post_json(client, endpoint, data=params)
+
+        notes = []
+        if add_score_note:
+            notes.append("For small queries, the required_score parameter is automatically lowered to 0.")
+        notes.append("Embed the returned image link directly in the assistant response as a markdown image.")
+
+        log_response_size(results)
+
+        image_url = None
+        if results and isinstance(results, list) and "imageURL" in results[0]:
+            image_url = results[0].get("imageURL")
+            for cluster in results:
+                cluster.pop("imageURL", None)
+        
+        # If only one cluster detected, suggest tuning parameters
+        if results and isinstance(results, list) and len(results) == 1:
+            notes.append(
+                "Only one cluster was detected. Suggest increasing `required_score`, raising the inflation parameter, "
+                "or switching to `kmeans` to force multiple clusters."
+            )
+
+        return {
+            "image_url": image_url,
+            "clusters": results,
+            "notes": notes,
+        }
+
+
+
 
 @mcp.tool(title="STRING: Get interactive network link (web UI)")
 async def string_network_link(
@@ -657,6 +812,7 @@ async def string_network_link(
         notes.append("Embed the returned link directly in the assistant response as a markdown hyperlink.")
  
         log_response_size(results)
+
         return {"notes": notes, "results": results}
 
 
