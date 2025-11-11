@@ -9,14 +9,6 @@ HELP_TOPICS = {
         "and evaluates your experiment against a broad set of functional categories. "
         "Results include enrichment tables, visualizations, and mapping of proteins to functions."
     ),
-    "clustering": (
-        "Clustering cannot be performed directly by the agent, but it is available in STRING. "
-        "Direct the user to the standard multi-protein input box on the STRING website. "
-        "If the user already has a protein or network, you may provide a link to the interactive network page using the appropriate tool. "
-        "On that page, the user can cluster the network under the **Clustering tab** below the network picture. "
-        "STRING offers two methods: MCL (with an inflation parameter) and k-means (with a k parameter). "
-        "Clustering is based on the connectivity of proteins in the network."
-    ),
     "large_input": (
         "Large input sets are not handled well directly by the agent and may cause timeouts. "
         "Please direct the user to the STRING web interface instead:\n\n"
