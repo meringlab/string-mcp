@@ -345,10 +345,16 @@ async def string_interactions_query_set(
     size_cutoff = 100
     add_size_note = False
     add_score_note = False
+    add_shared_note = False
+
     if not required_score and len(proteins.lower().split("%d0")) <= 5:
         params["required_score"] = 0
         required_score = 0
         add_score_note = True
+ 
+    if len(proteins.lower().split('%0d')) == 2 and extend_network is None:
+        params['add_white_nodes'] = 5
+        add_shared_note = True
 
     endpoint = "/api/json/network"
 
@@ -361,7 +367,7 @@ async def string_interactions_query_set(
         notes = []
 
         if add_score_note:
-            notes.append("The required_score parameter was lowered to 0 - showing all interactions."
+            notes.append("The required_score parameter was lowered to 0 - showing all interactions. "
                          "IMPORTANT: If the interaction score is low (below 400), inform user about it.")
         if not len(results):
              notes.append(f"No interactions found in STRING database at that {required_score} cut-off.")
@@ -369,6 +375,12 @@ async def string_interactions_query_set(
         if add_size_note:
             notes.append(f"The list was truncated to top {size_cutoff} interactions.")
      
+        if add_shared_note:
+            notes.append(
+                "For two-protein queries, the network was expanded by five additional proteins to reveal possible shared or indirect interactions between the queried proteins. "
+                "Verify whether direct or indirect interactions exist within this network, and inform the user accordingly."
+            )
+
         log_response_size(results)
 
         return {"notes": notes, "network": results}
@@ -550,21 +562,36 @@ async def string_visual_network(
 
     endpoint = f"/api/json/network_image_url"
 
-
     add_score_note = False
+    add_shared_note = False
+
     if not required_score and len(proteins.lower().split("%d0")) <= 5:
         params["required_score"] = 0
         add_score_note = True
+
+    if len(proteins.lower().split('%0d')) == 2 and extend_network is None:
+        params['add_white_nodes'] = 5
+        add_shared_note = True
+
 
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
 
         notes = []
+
         if add_score_note:
-            notes.append(f"For small queries the required_score parameter is lowered to 0.")
-        notes.append("Embed the returned image link directly in the assistant response as a markdown image. ")
-        notes.append("Generated image is not an evidence of interactions, use data from string_interactions_query_set to confirm existance of the interaction. ")
+            notes.append("For small queries, the `required_score` parameter was lowered to 0.")
+        notes.append("The generated image is only a visualization — it does not constitute evidence of interaction. "
+                     "Always verify interactions using `string_interactions_query_set` with the same parameters.")
+
+        if add_shared_note:
+            notes.append(
+                "For two-protein queries, the network was expanded by five additional proteins to reveal possible shared or indirect interactions between the queried proteins. "
+                "Use `string_interactions_query_set` with the same parameters to verify whether direct or indirect interactions are present.")
+
+        notes.append("Embed the returned image link directly in the assistant response as a markdown image.")
+
  
         log_response_size(results)
 
@@ -795,6 +822,12 @@ async def string_network_link(
 
 
     add_score_note = False
+    add_shared_note = False
+
+    if len(proteins.lower().split('%0d')) == 2 and extend_network is None:
+        params['add_white_nodes'] = 5
+        add_shared_note = True
+
     if not required_score and len(proteins.lower().split("%d0")) <= 5:
         params["required_score"] = 0
         add_score_note = True
@@ -808,6 +841,13 @@ async def string_network_link(
         notes = []
         if add_score_note:
             notes.append(f"For small queries the required_score parameter is lowered to 0.")
+
+        if add_shared_note:
+            notes.append(
+                "For two-protein queries, the network was expanded by five additional proteins to reveal possible shared or indirect interactions between the queried proteins."
+            )
+ 
+
         notes.append("Embed the returned link directly in the assistant response as a markdown hyperlink.")
  
         log_response_size(results)
