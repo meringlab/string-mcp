@@ -362,9 +362,10 @@ async def string_interactions_query_set(
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
         if 'error' in results: return results
-        else: results, add_size_note = truncate_network(results, required_score, size_cutoff)
+        else: results, add_size_note, original_size = truncate_network(results, required_score, size_cutoff)
 
         notes = []
+
 
         if add_score_note:
             notes.append("The required_score parameter was lowered to 0 - showing all interactions. "
@@ -372,6 +373,7 @@ async def string_interactions_query_set(
         if not len(results):
              notes.append(f"No interactions found in STRING database at that {required_score} cut-off.")
 
+        notes.append(f'There are {original_size} associations above specified cutoff.')
         if add_size_note:
             notes.append(f"The list was truncated to top {size_cutoff} interactions.")
      
@@ -402,13 +404,6 @@ async def string_all_interaction_partners(
             "(e.g. STRG0AXXXXX for uploaded genomes). Only set if the user explicitly requests it."
         ))
     ] = None,
-    #limit: Annotated[
-    #    Optional[int],
-    #    Field(description=(
-    #        "Optional. Maximum number of interaction partners returned per query protein. "
-    #        "Higher-confidence interactions appear first. Only set if the user explicitly requests it."
-    #    ))
-    #] = None,
     required_score: Annotated[
         Optional[int],
         Field(description=(
@@ -443,10 +438,10 @@ async def string_all_interaction_partners(
     size_cutoff = 100
 
     params = {"identifiers": identifiers}
+    params["limit"] = limit
+
     if species is not None:
         params["species"] = species
-    if limit is not None:
-        params["limit"] = limit
     if required_score is not None:
         params["required_score"] = required_score
     if network_type is not None:
@@ -460,11 +455,14 @@ async def string_all_interaction_partners(
             log_response_size(results)
             return results
         else:
-            results_truncated, add_size_note = truncate_network(results, required_score, size_cutoff)
+            results_truncated, add_size_note, original_size = truncate_network(results, required_score, size_cutoff)
 
         notes = []
 
-        if add_size_note:
+        if original_size < limit:
+            notes.append(f'For this list STRING has found {original_size} associations above specified cutoff.')
+
+        if add_size_note or original_size == limit:
             notes.append(f"The list was truncated to the top {size_cutoff} interactions.")
 
         if not len(results_truncated):
@@ -1494,13 +1492,16 @@ def truncate_network(data, input_score_threshold=None, size_cutoff=100, is_json=
     # sort by score descending
     filtered.sort(key=lambda r: r.get("score", 0), reverse=True)
 
+    # save the size
+    original_size = len(filtered)
+
     # truncate if needed
     add_size_note = False
     if len(filtered) > size_cutoff:
         filtered = filtered[:size_cutoff]
         add_size_note = True
 
-    return filtered, add_size_note
+    return filtered, add_size_note, original_size
 
 
 def sort_and_truncate_functional_annotation(data, is_json):
