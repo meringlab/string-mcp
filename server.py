@@ -347,7 +347,7 @@ async def string_interactions_query_set(
     add_score_note = False
     add_shared_note = False
 
-    if not required_score and len(proteins.lower().split("%d0")) <= 5:
+    if not required_score and len(proteins.lower().split("%0d")) <= 5:
         params["required_score"] = 0
         required_score = 0
         add_score_note = True
@@ -563,10 +563,10 @@ async def string_visual_network(
     add_score_note = False
     add_shared_note = False
 
-    if not required_score and len(proteins.lower().split("%d0")) <= 5:
+    if not required_score and len(proteins.lower().split("%0d")) <= 5:
         params["required_score"] = 0
         add_score_note = True
-
+   
     if len(proteins.lower().split('%0d')) == 2 and extend_network is None:
         params['add_white_nodes'] = 5
         add_shared_note = True
@@ -826,7 +826,7 @@ async def string_network_link(
         params['add_white_nodes'] = 5
         add_shared_note = True
 
-    if not required_score and len(proteins.lower().split("%d0")) <= 5:
+    if not required_score and len(proteins.lower().split("%0d")) <= 5:
         params["required_score"] = 0
         add_score_note = True
 
@@ -1340,7 +1340,7 @@ async def string_help(
         Field(
             description=(
                 "Help topic to display. Choose one of:\n"
-                "  how_to_use_string, gsea, clustering, large_input, scores,\n"
+                "  how_to_use_string, gsea, large_input, scores,\n"
                 "  missing_proteins, missing_species, proteome_annotation,\n"
                 "  regulatory_networks, line_colors\n\n"
             )
@@ -1352,7 +1352,7 @@ async def string_help(
     
     Use this tool when the user question involves:
       - What is STRING is or how to use the tool (how_to_use_string)
-      - functionality not available via MCP tools (e.g. clustering, GSEA, regulatory networks, large datasets).
+      - functionality not available via MCP tools (e.g. GSEA, regulatory networks, large datasets).
       - meaning of the lines in the network (line_colors)
     """
     if topic is None:
