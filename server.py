@@ -41,7 +41,6 @@ from typing import Annotated, Optional
 
 from pydantic import Field
 from fastmcp import FastMCP
-from fastmcp.server.dependencies import get_http_headers
 
 from string_help import HELP_TOPICS
 
@@ -71,7 +70,6 @@ timeout = float(config.get("timeout", 100))
 log_verbosity = {}
 log_verbosity['call'] = False
 log_verbosity['params'] = False
-log_verbosity["taskid"] =  False
 log_verbosity["size"] =  False
 
 
@@ -80,13 +78,11 @@ if 'verbosity' in config:
     if config['verbosity'] == 'full':
         log_verbosity['call'] = True
         log_verbosity['params'] = True
-        log_verbosity['taskid'] = True
         log_verbosity['size'] = True
 
     if config['verbosity'] == 'low':
         log_verbosity['call'] = True
         log_verbosity['params'] = False
-        log_verbosity['taskid'] = True
         log_verbosity['size'] = True
 
 
@@ -1573,14 +1569,6 @@ def log_call(endpoint, params):
 
     if log_verbosity['call']:
         print(f"Call: {endpoint}", file=sys.stderr)
-
-    if log_verbosity['taskid']:
-        headers = get_http_headers()
-        client_id = headers.get("x-client-id")
-        task_id = headers.get("x-task-id")
-
-        print("TaskId:", task_id, file=sys.stderr)
-        print("ClientId:", client_id, file=sys.stderr)
  
     if log_verbosity['params']:
         print("Params:", file=sys.stderr)
