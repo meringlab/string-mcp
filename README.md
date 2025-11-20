@@ -3,9 +3,11 @@
 Exposes [STRING database](https://string-db.org) functionality as a **Model Context Protocol (MCP)** server.  
 This implementation allows AI agents and other MCP-compatible clients to access STRING data through a structured and self-describing interface.
 
-It is build on top of the STRING API but adapted specifically for model-based use, with emphasis on conciseness and context efficiency. The server controls the amount and type of data so that responses stay within the reasoning limits of large language models. It also adapts the structure and adds metadata to support more consistent parsing and interpretation by agentic systems.
+It is built on top of the STRING API but adapted specifically for model-based use, with emphasis on conciseness and context efficiency. The server controls the amount and type of data so that responses stay within the reasoning limits of large language models. It also adapts the structure and adds metadata to support more consistent parsing and interpretation by agentic systems.
 
 For reproducible workflows and large-scale integration, use the [STRING API](https://string-db.org/cgi/help?subpage=api).
+
+For a live demonstration of MCP capabilities, see [STRING Chat](https://string-db.org/cgi/chat).
 
 ---
 
@@ -24,12 +26,12 @@ For reproducible workflows and large-scale integration, use the [STRING API](htt
 ## Requirements
 
 - **Python** ≥ 3.10  
-- Dependencies (see `requirements.txt`):  
-  - `fastmcp==2.10.6`  
-  - `httpx==0.28.1`  
-  - `pydantic==2.11.7`  
+- Dependencies (see `requirements.txt`):
+  - `fastmcp==2.10.6`
+  - `httpx==0.28.1`
+  - `pydantic==2.11.7`
 
-> **Note**: If the server crashes on startup, it’s very likely due to an incompatible **FastMCP** version.  
+> **Note:** If the server crashes on startup, it is very likely due to an incompatible **FastMCP** version.
 
 ---
 
@@ -43,12 +45,11 @@ The server reads settings from `config/server.config` (JSON). Example:
   "server_port": 57416,
   "verbosity": "low"
 }
-```
 
 ## Installation
 
 ```bash
-git clone git@github.com:meringlab/string-mcp.git
+git clone https://github.com/meringlab/string-mcp.git
 cd string-mcp
 pip install -r requirements.txt
 ```
