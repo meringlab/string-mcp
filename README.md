@@ -6,9 +6,11 @@ This implementation allows AI agents and other MCP-compatible clients to access 
 
 It is built on top of the STRING API but adapted specifically for model-based use, with emphasis on conciseness and context efficiency. The server controls the amount and type of data so that responses stay within the reasoning limits of large language models. It also adapts the structure and adds metadata to support more consistent parsing and interpretation by agentic systems.
 
-For reproducible workflows and large-scale integration, use the [STRING API](https://string-db.org/cgi/help?subpage=api).
+The server is also available as a hosted remote MCP endpoint at [https://mcp.string-db.org](https://mcp.string-db.org).
 
 For a live demonstration of MCP capabilities, see [STRING Chat](https://string-db.org/cgi/chat).
+
+For reproducible workflows and large-scale integration, use the [STRING API](https://string-db.org/cgi/help?subpage=api).
 
 ---
 
