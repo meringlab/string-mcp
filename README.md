@@ -1,6 +1,7 @@
 # STRING MCP Server
 
 Exposes [STRING database](https://string-db.org) functionality as a **Model Context Protocol (MCP)** server.  
+
 This implementation allows AI agents and other MCP-compatible clients to access STRING data through a structured and self-describing interface.
 
 It is built on top of the STRING API but adapted specifically for model-based use, with emphasis on conciseness and context efficiency. The server controls the amount and type of data so that responses stay within the reasoning limits of large language models. It also adapts the structure and adds metadata to support more consistent parsing and interpretation by agentic systems.
@@ -15,11 +16,12 @@ For a live demonstration of MCP capabilities, see [STRING Chat](https://string-d
 
 - Resolve protein identifiers to STRING metadata
 - Retrieve interaction networks
+- Cluster and visualize interaction networks
 - Perform homology lookups across species
 - Access evidence links for protein–protein interactions
 - Run functional enrichment analysis (including enrichment plots)
 - Get curated functional annotations for proteins
-- Query proteins by functional terms (GO, KEGG, Reactome, etc.)
+- Query proteins by function or disease (GO, KEGG, Reactome, DISEASES etc.)
 
 ---
 
