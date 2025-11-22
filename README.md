@@ -65,6 +65,16 @@ pip install -r requirements.txt
 python server.py
 ```
 
+## Testing
+
+   ```bash
+   curl -v -H "Accept: text/event-stream" http://localhost:[port]/mcp
+   ```
+
+You should see a `200 OK` response with `content-type: text/event-stream`. 
+
+**Note:** HTTP requests sent with default headers will trigger `anyio.ClosedResourceError` and `406 Not Acceptable`. This is expected behavior for the MCP streaming protocol and does not indicate a problem.
+
 ## Docker
 
 1. Ensure you have a `config/server.config` file (copy from `config/server.config.example` if needed):
@@ -115,7 +125,6 @@ python server.py
 
 **Note:** The Docker container will use the configuration from `config/server.config`. If this file doesn't exist, the container will copy from `server.config.example` on first run.
 
-**Note on errors:** You may see `anyio.ClosedResourceError` messages in the logs - these are expected and handled internally by the MCP server. They don't affect functionality. The server is working correctly when you see successful HTTP responses (200 OK, 202 Accepted).
 
 ## License / Citation
 
