@@ -680,26 +680,42 @@ async def string_network_clustering(
     if hide_disconnected_nodes is not None:
         params["hide_disconnected_nodes"] = hide_disconnected_nodes
 
-    if clustering_algorithm and clustering_algorithm.lower() in ['mcl', 'kmeans']:
-        params['network_clustering_algorithm'] = clustering_algorithm
-    else:
-        params['network_clustering_algorithm'] = 'MCL'
 
-    if clustering_parameter and clustering_algorithm == 'kmeans':
+    # default
+    if not clustering_algorithm:
+        clustering_algorithm = 'MCL'
+
+    # fix casing
+
+    if clustering_algorithm.lower() == 'kmeans': clustering_algorithm = 'kmeans'
+    if clustering_algorithm.lower() == 'mcl': clustering_algorithm = 'MCL'
+
+    if clustering_algorithm not in ['MCL', 'kmeans']:
+        clustering_algorithm = 'MCL'
+
+    params['network_clustering_algorithm'] = clustering_algorithm
+
+    # parse parameters
+
+    if clustering_algorithm == 'kmeans':
+
         try:
             clustering_parameter = float(int(clustering_parameter))
         except Exception:
             clustering_parameter = 3
-    elif clustering_parameter and clustering_algorithm == 'MCL':
+
+        params['network_clustering_parameter_kmeans'] = clustering_parameter
+
+    if clustering_algorithm == 'MCL':
+
         try:
             clustering_parameter = float(clustering_parameter)
             clustering_parameter = max(1, min(10, clustering_parameter))
         except Exception:
             clustering_parameter = 3
-    elif not clustering_parameter:
-        clustering_parameter = 3
 
-    params['network_clustering_param'] = clustering_parameter
+        params['network_clustering_parameter_mcl'] = clustering_parameter
+
 
     if center_node_labels is not None:
         params["center_node_labels"] = center_node_labels
