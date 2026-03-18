@@ -314,13 +314,16 @@ async def string_interactions_query_set(
     Retrieves the interactions between the query proteins.
     Use this method only when you specifically need to list the interactions between all proteins in your query set.
     If user asks for 'physical' or 'complex' use 'physical' network type.
-
+    
     - For a **single protein**, the network includes that protein and its top 10 most likely interaction partners, plus all interactions among those partners.
     - For **multiple proteins**, the network includes all direct interactions between them.
     - If the user refers to "physical interactions", "complexes", or "binding", set the network type to "physical".
-
+    
     If few or no interactions are returned, consider reducing the `required_score`.
-
+    
+    For large query sets (>50 proteins), consider increasing the `required_score` (e.g. ≥700) 
+    to focus on high-confidence interactions and avoid overly dense networks.
+    
     - Expand the names of score sources:  
         `nscore` (neighborhood), `fscore` (fusion), `pscore` (phylogenetic profile),  
         `ascore` (coexpression), `escore` (experimental), `dscore` (database), `tscore` (text-mining)
@@ -472,11 +475,9 @@ async def string_all_interaction_partners(
 async def string_visual_network(
     proteins: Annotated[
         str,
-        Field(description="Required. One or more protein IDs (optionally with values). Example:\n"
-                          "PTEN 0.234\nSMO -3.445\n"
-                          "Use newline (%0d) between entries."
-                          "You can provide with the number SMO 0.123 PTEN\t-0.2"
-        )
+        Field(description="Required. One or more protein IDs, optionally followed by one numeric value per protein. Example:\n"
+                  "PTEN 0.234\nSMO -3.445\n"
+                  "Use newline (%0d) between entries. Tabs and spaces are accepted as separators.")
     ],
     species: Annotated[
         str,
@@ -488,7 +489,7 @@ async def string_visual_network(
     ] = None,
     required_score: Annotated[
         Optional[int],
-        Field(description="Optional. Threshold of significance to include an interaction (0-1000).")
+        Field(description="Optional. Threshold of significance to include an interaction (0-1000). Default: 400. Increase for large queries to 700.")
     ] = None,
     network_type: Annotated[
         Optional[str],
@@ -496,7 +497,7 @@ async def string_visual_network(
     ] = None,
     network_flavor: Annotated[
         Optional[str],
-        Field(description='Optional. Edge style: "evidence" (default), "confidence", or "actions".')
+        Field(description='Optional. Edge style: "evidence" (default), "confidence" (recommended for large queries, e.g. >100 proteins), or "actions".')
     ] = None,
     hide_disconnected_nodes: Annotated[
         Optional[int],
@@ -516,22 +517,35 @@ async def string_visual_network(
     #] = None
 ) -> dict:
     """
-    Retrieves a URL to a **STRING interaction network image** for one or more proteins.  
+    Retrieves a URL to a **STRING interaction network image** for one or more proteins.
     
-    - For a single protein: includes the protein and its top 10 most likely interactors.  
-    - For multiple proteins: includes all known interactions **within the query set**.  
-    - If the user asks for "physical interactions", "complexes", or "binding", set `network_type` to "physical".  
+    - For a single protein: includes the protein and its top 10 most likely interactors.
+    - For multiple proteins: includes all known interactions **within the query set**.
+    - If the user asks for "physical interactions", "complexes", or "binding", set `network_type` to "physical".
     
-    If numeric values are provided (e.g. PTEN 0.234), they will be visualized as halos around the nodes:
-    - Positive → blue
-    - Negative → red
-    - Magnitude → saturation
-
-    If few or no interactions are shown, consider lowering `required_score`.  
+    The input may include one numeric value per protein, such as fold change, effect size, or score.
+    These values are visualized as colored halos around the nodes, allowing overlay of protein-level measurements on the network.
     
-    Always ask if the user also wants a link to the interactive STRING network page.  
+    Example:
+    PTEN 2.1
+    SMO -1.3
     
-    Input parameters should match those used in related STRING tools (e.g. `string_interactions_query_set`), unless otherwise specified.  
+    If numeric values are provided:
+    - positive values are shown in blue
+    - negative values are shown in red
+    - larger absolute values produce stronger halo intensity
+    
+    If the user provides numeric values together with the proteins, preserve them in the query.
+    
+    If few or no interactions are shown, consider lowering `required_score`.
+    
+    For large queries (>100 proteins):
+    - use `network_flavor="confidence"`
+    - increase `required_score` (e.g. 700)
+    
+    Always ask if the user also wants a link to the interactive STRING network page.
+    
+    Input parameters should match those used in related STRING tools (e.g. `string_interactions_query_set`), unless otherwise specified.
 
     """
     params = {"identifiers": proteins}
@@ -764,12 +778,9 @@ async def string_network_clustering(
 async def string_network_link(
     proteins: Annotated[
         str,
-        Field(description="Required. One or more protein IDs (optionally with values). Example:\n"
-                          "PTEN 0.234\nSMO -3.445\n"
-                          "Use newline (%0d) between entries."
-                          "You can provide with the number SMO 0.123 PTEN\t-0.2"
-        )
-
+        Field(description="Required. One or more protein IDs, optionally followed by one numeric value per protein. Example:\n"
+                  "PTEN 0.234\nSMO -3.445\n"
+                  "Use newline (%0d) between entries. Tabs and spaces are accepted as separators.")
     ],
     species: Annotated[
         str,
@@ -785,7 +796,7 @@ async def string_network_link(
     ] = None,
     network_flavor: Annotated[
         Optional[str],
-        Field(description='Optional. Edge style: "evidence" (default) or "confidence"')
+        Field(description='Optional. Edge style: "evidence" (default) or "confidence".')
     ] = None,
     network_type: Annotated[
         Optional[str],
@@ -801,20 +812,34 @@ async def string_network_link(
     #] = None,
 ) -> dict:
     """Retrieves a stable URL to an interactive STRING network for one or more proteins.
-
-    This tool returns a link to the STRING website where the queried protein network can be interactively explored.  
-    Users can click on nodes and edges, view evidence, and explore additional information beyond what static images can provide.
-
-    - If queried with a single protein, the network includes the query protein and its 10 most likely interactors.
-    - If queried with multiple proteins, the network will show interactions among the queried set.
-    - If no or very few interactions are returned, try lowering the required_score parameter.
-    - If the user refers to "physical interactions", "complexes", or "binding", set the network type to "physical".
-
-    If numeric values are provided (e.g. PTEN 0.234), they will be visualized as halos around the nodes.
- 
-    Always display the link as markdown (hide the raw URL).  
-    When calling related tools, use the same input parameters unless otherwise specified.
-
+    
+    - For a single protein: includes the protein and its top 10 most likely interactors.
+    - For multiple proteins: includes all known interactions **within the query set**.
+    - If the user asks for "physical interactions", "complexes", or "binding", set `network_type` to "physical".
+    
+    The input may include one numeric value per protein, such as fold change, effect size, or score.
+    These values are visualized as colored halos around the nodes, allowing overlay of protein-level measurements on the network.
+    
+    Example:
+    PTEN 2.1
+    SMO -1.3
+    
+    If numeric values are provided:
+    - positive values are shown in blue
+    - negative values are shown in red
+    - larger absolute values produce stronger halo intensity
+    
+    If the user provides numeric values together with the proteins, preserve them in the query.
+    
+    If few or no interactions are shown, consider lowering `required_score`.
+    
+    For large queries (>100 proteins):
+    - use `network_flavor="confidence"`
+    - increase `required_score` (e.g. 700)
+    
+    Always display the link as a markdown hyperlink (hide the raw URL).
+    
+    Input parameters should match those used in related STRING tools unless otherwise specified.
     """
     params = {"identifiers": proteins}
     if species is not None:
