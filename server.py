@@ -374,7 +374,7 @@ async def string_interactions_query_set(
 
         notes.append(f'There are {original_size} associations above specified cutoff.')
         if add_size_note:
-            notes.append(f"The list was truncated to top {size_cutoff} interactions.")
+            notes.append(f"The list was truncated to the top {size_cutoff} interactions from {original_size} associations above the specified cutoff.")
      
         if add_shared_note:
             notes.append(
@@ -461,11 +461,16 @@ async def string_all_interaction_partners(
         if original_size < limit:
             notes.append(f'For this list STRING has found {original_size} associations above specified cutoff.')
 
-        if add_size_note or original_size == limit:
-            notes.append(f"The list was truncated to the top {size_cutoff} interactions.")
+        if add_size_note:
+            notes.append(f"The list was truncated to the top {size_cutoff} interactions from {original_size} returned associations above the specified cutoff.")
+        elif original_size == limit:
+            notes.append(
+                f"STRING returned the configured maximum of {limit} interactions. "
+                f"Do not report this as the total number of interactions; additional interactions may exist upstream."
+            )
 
         if not len(results_truncated):
-             notes.append(f"No interactions found in STRING database at that {required_score} cut-off. Cosidering lowering the required_score.")
+             notes.append(f"No interactions found in STRING database at that {required_score} cut-off. Consider lowering the required_score.")
         
         log_response_size(results_truncated)
         return {"notes": notes, "interactions": results_truncated}
@@ -1035,9 +1040,10 @@ async def string_enrichment(
             log_response_size(results)
             return results
         else:
-            results_truncated = truncate_enrichment(results, 'json')
+            results_truncated, truncation_notes = truncate_enrichment(results, 'json')
 
         notes = []
+        notes.extend(truncation_notes)
         if not results_truncated:
             notes.append("AGENT MUST tell the user: No statistically significant enrichment was observed. "
                          "This means the proteins in their list do not group into known pathways or functions "
@@ -1085,10 +1091,10 @@ async def string_functional_annotation(
             log_response_size(results)
             return results
         else:
-             results_truncated = sort_and_truncate_functional_annotation(results, 'json')
+             results_truncated, truncation_notes = sort_and_truncate_functional_annotation(results, 'json')
 
         log_response_size(results_truncated)
-        return {"results": results_truncated}  # Functional annotation per protein
+        return {"notes": truncation_notes, "results": results_truncated}  # Functional annotation per protein
 
 
 @mcp.tool(title="STRING: Get enrichment result figure (image URL)")
@@ -1283,9 +1289,9 @@ async def string_proteins_for_term(
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
         if 'error' in results: return results 
-        results_truncated = truncate_functional_terms(results, 'json')
+        results_truncated, truncation_notes = truncate_functional_terms(results, 'json')
         log_response_size(results_truncated)
-        return {"results": results_truncated}
+        return {"notes": truncation_notes, "results": results_truncated}
 
 
 @mcp.tool(title="STRING: Search proteins by amino acid sequence")
@@ -1324,16 +1330,16 @@ async def string_sequence_search(
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout*2) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
-        results_truncated, add_trancation_note = truncate_similarity_search(results)
+        results_truncated, add_trancation_note, total_hits = truncate_similarity_search(results)
 
         notes = []
         if add_trancation_note:
-            notes.append("Results truncated for readability. "
+            notes.append(f"Results truncated to {len(results_truncated)} rows from {total_hits} original rows for readability. "
                          "If you provided multiple sequences, only the top hits are shown per query. "
                          "Ranking is based on bitscore; lower-scoring hits were omitted.")
             
         log_response_size(results_truncated)
-        return {"results": results_truncated}
+        return {"notes": notes, "results": results_truncated}
 
 @mcp.tool(title="STRING: Query species and clades in STRING")
 async def string_query_species(
@@ -1410,10 +1416,12 @@ async def string_help(
 def truncate_enrichment(data, is_json):
     term_cutoff = 20   # max terms per category
     size_cutoff = 15   # max proteins listed per term
+    truncation_notes = []
 
     if is_json.lower() == 'json':
         filtered_data = []
         category_count = defaultdict(int)
+        original_rows = len(data)
 
         for row in data:
             category = row['category']
@@ -1425,7 +1433,7 @@ def truncate_enrichment(data, is_json):
 
             # Save total before truncation
             row['inputGenes_total'] = len(row['inputGenes'])
-            row['preferredNames_total'] = len(row['preferredNames'])
+            row['proteinCount'] = len(row['preferredNames'])
 
             if len(row['inputGenes']) > size_cutoff:
                 row['inputGenes'] = row['inputGenes'][:size_cutoff] + ["..."]
@@ -1436,9 +1444,14 @@ def truncate_enrichment(data, is_json):
 
             filtered_data.append(row)
 
+        if len(filtered_data) < original_rows:
+            truncation_notes.append(
+                f"Enrichment results were truncated to the top {term_cutoff} terms per category for readability."
+            )
+
         data = filtered_data
 
-    return data
+    return data, truncation_notes
 
 
 def truncate_similarity_search(data):
@@ -1447,11 +1460,11 @@ def truncate_similarity_search(data):
     total_cutoff=50
 
     if not isinstance(data, list) or not data:
-        return data, False
+        return data, False, 0
 
     total_hits = len(data)
     if total_hits <= total_cutoff:
-        return data, False
+        return data, False, total_hits
 
 
     grouped = defaultdict(list)
@@ -1469,11 +1482,11 @@ def truncate_similarity_search(data):
         truncated.extend(hits[:per_query_cutoff])
 
     if len(truncated) <= total_cutoff:
-        return truncated, True
+        return truncated, True, total_hits
 
     truncated = [hits[0] for hits in grouped.values()]
 
-    return truncated, True
+    return truncated, True, total_hits
 
 
 def truncate_species_results(data):
@@ -1498,7 +1511,7 @@ def truncate_species_results(data):
             if len(clade) > max_per_clade:
                 entry_copy["speciesInClade"] = clade[:max_per_clade]
                 entry_copy["note"] = (
-                    f"Clade truncated to first {max_per_clade}."
+                    f"speciesInClade list truncated to first {max_per_clade} species."
                 )
 
         truncated.append(entry_copy)
@@ -1544,49 +1557,66 @@ def truncate_network(data, input_score_threshold=None, size_cutoff=100, is_json=
 def sort_and_truncate_functional_annotation(data, is_json):
 
     size_cutoff = 50
+    truncation_notes = []
 
     if is_json.lower() == 'json':
         
  
+        original_rows = len(data)
         data = sorted(data, key=lambda x: x["ratio_in_set"], reverse=True)
         
         if len(data) > size_cutoff:
             data = data[:size_cutoff]
-            data.insert(0, {"note": f"The list was truncated to first {size_cutoff} terms..."})
+            truncation_notes.append(
+                f"The list was truncated to the first {size_cutoff} terms from {original_rows} original rows."
+            )
 
-    return data
+    return data, truncation_notes
  
 def truncate_functional_terms(data, is_json):
     term_size_cutoff = 10
     protein_size_cutoff_top = 100    # cap for top terms
     protein_size_cutoff_rest = 25    # cap for later terms
+    truncation_notes = []
 
     if is_json.lower() == 'json':
         filtered_data = []
+        original_rows = len(data)
 
         for i, row in enumerate(data[:term_size_cutoff]):
             if i < 3:
                 # top terms: allow up to 500
                 if len(row['preferredNames']) > protein_size_cutoff_top:
+                    original_protein_count = len(row['preferredNames'])
                     row['preferredNames'] = row['preferredNames'][:protein_size_cutoff_top] + ["..."]
                     row['stringIds'] = row['stringIds'][:protein_size_cutoff_top] + ["..."]
+                    row['proteinCount'] = original_protein_count
                     row['truncated'] = True
                 else:
+                    row['proteinCount'] = len(row['preferredNames'])
                     row['truncated'] = False
             else:
                 # later terms: allow only 50
                 if len(row['preferredNames']) > protein_size_cutoff_rest:
+                    original_protein_count = len(row['preferredNames'])
                     row['preferredNames'] = row['preferredNames'][:protein_size_cutoff_rest] + ["..."]
                     row['stringIds'] = row['stringIds'][:protein_size_cutoff_rest] + ["..."]
+                    row['proteinCount'] = original_protein_count
                     row['truncated'] = True
                 else:
+                    row['proteinCount'] = len(row['preferredNames'])
                     row['truncated'] = False
 
             filtered_data.append(row)
 
+        if len(filtered_data) < original_rows:
+            truncation_notes.append(
+                f"Functional-term results were truncated to the top {term_size_cutoff} terms for readability."
+            )
+
         data = filtered_data
 
-    return data
+    return data, truncation_notes
 
 def log_response_size(resp):
     if log_verbosity['size']:
@@ -1627,4 +1657,3 @@ if __name__ == "__main__":
         log_level="info",
         stateless_http=True,
     )
-
