@@ -516,6 +516,11 @@ async def string_visual_network(
         Optional[int],
         Field(description="Optional. 1 to center protein names on nodes, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
     ] = None,
+    do_not_show_structures: Annotated[
+        Optional[int],
+        Field(description="Optional. 1 remove small protein structure previews from inside the node bubbles. DO NOT SET unless user explicitly requests.")
+    ] = None,
+ 
     #custom_label_font_size: Annotated[
     #    Optional[int],
     #    Field(description="Optional. Change font size of protein names (from 5 to 50, default: 12). DO NOT SET unless user explicitly requests.")
@@ -566,6 +571,8 @@ async def string_visual_network(
         params["network_flavor"] = network_flavor
     if hide_disconnected_nodes is not None:
         params["hide_disconnected_nodes"] = hide_disconnected_nodes
+    if do_not_show_structures is not None:
+        params["block_structure_pics_in_bubbles"] = do_not_show_structures
     #if show_query_node_labels is not None:
     #    params["show_query_node_labels"] = show_query_node_labels
     if center_node_labels is not None:
