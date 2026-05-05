@@ -1363,9 +1363,9 @@ async def string_query_species(
     species_text: Annotated[
         str,
         Field(description=(
-            "Required. Free-text name of a species, clade or taxon id to search in STRING. "
-            "Examples: 'human', 'mouse', 'vertebrates', '511145' "
-            "Partial matches are allowed."
+            "Required. One species/clade search term or multiple NCBI taxon IDs separated by carriage return (%0d). "
+            "Examples: 'human', 'mouse', 'vertebrates', '511145', or '9598%0d10090'. "
+            "For multiple queries, use taxon IDs rather than free-text names."
         ))
     ],
 ) -> dict:
@@ -1376,21 +1376,67 @@ async def string_query_species(
     - Use this when the user asks which species or clades are present in STRING,
       or when you need the correct NCBI taxon ID to pass to other tools.
     - use this to resolve NCBI taxons IDs to their scientific names.
-    - The results are limited to the top 50 matches.
+    - Accepts up to 100 taxon IDs separated by `%0d`.
+    - The results are limited to the top 50 matches per query.
     - When the user asks for a species list, do not list clades.
     - If the requested species cannot be matched (i.e. the correct species is not present
       in the results), **immediately invoke the 'string_help' tool with topic='missing_species'**.
     """
     endpoint = "/api/json/query_species_names"
-    params = {"species_text": species_text, 'limit': 50, 'add_sps':'t'}
+    species_queries = [query.strip() for query in species_text.replace("%0D", "%0d").split("%0d") if query.strip()]
+    query_limit = 100
+    notes = []
+
+    if len(species_queries) > query_limit:
+        notes.append(
+            f"Only the first {query_limit} species queries were processed; split longer lists into multiple calls."
+        )
+        species_queries = species_queries[:query_limit]
+
+    if not species_queries:
+        return {"notes": ["No species query was provided."], "results": []}
 
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
-        log_call(endpoint, params)
-        results = await _post_json(client, endpoint, data=params)
-        truncated_results = truncate_species_results(results)
-         
-        log_response_size(truncated_results)
-        return {"results": truncated_results}
+        if len(species_queries) == 1:
+            params = {"species_text": species_queries[0], 'limit': 50, 'add_sps':'t'}
+            log_call(endpoint, params)
+            results = await _post_json(client, endpoint, data=params)
+            if 'error' in results:
+                log_response_size(results)
+                return results
+            truncated_results = truncate_species_results(results)
+
+            response = {"results": truncated_results}
+            if notes:
+                response["notes"] = notes
+
+            log_response_size(response)
+            return response
+
+        tasks = []
+        for query in species_queries:
+            params = {"species_text": query, 'limit': 50, 'add_sps':'t'}
+            log_call(endpoint, params)
+            tasks.append(_post_json(client, endpoint, data=params))
+
+        results = await asyncio.gather(*tasks)
+
+        results_by_query = []
+        for query, query_results in zip(species_queries, results):
+            if isinstance(query_results, dict) and 'error' in query_results:
+                results_by_query.append({"query": query, "error": query_results["error"]})
+            else:
+                results_by_query.append({
+                    "query": query,
+                    "results": truncate_species_results(query_results),
+                })
+
+        response = {"results_by_query": results_by_query}
+        if notes:
+            response["notes"] = notes
+
+        log_response_size(response)
+        return response
 
 
 @mcp.tool(title="STRING: Help / FAQ")
