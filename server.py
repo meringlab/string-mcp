@@ -772,12 +772,9 @@ async def string_network_clustering(
             for cluster in results:
                 cluster.pop("imageURL", None)
         
-        # If only one cluster detected, suggest tuning parameters
-        if results and isinstance(results, list) and len(results) == 1:
-            notes.append(
-                "Only one cluster was detected. Suggest increasing `required_score`, raising the inflation parameter, "
-                "or switching to `kmeans` to force multiple clusters."
-            )
+        clustering_note = get_clustering_structure_note(results, clustering_algorithm)
+        if clustering_note:
+            notes.append(clustering_note)
 
         return {
             "image_url": image_url,
@@ -1613,7 +1610,62 @@ def normalize_bitscore(value):
         if isinstance(value, str):
             normalized = value.replace("&lt;", "<").replace("&nbsp;", " ").strip()
             return normalized
+    return value
+
+
+def get_clustering_structure_note(clusters, clustering_algorithm):
+    if not isinstance(clusters, list) or not clusters:
+        return None
+
+    if clustering_algorithm == "MCL":
+        tuning_hint = (
+            "Try increasing `required_score`, increasing the MCL inflation parameter, "
+            "or switching to a physical network for a sparser interaction map."
+        )
+    else:
+        tuning_hint = (
+            "Try increasing `required_score`, increasing the requested k-means cluster count, "
+            "or switching to a physical network for a sparser interaction map."
+        )
+
+    if len(clusters) == 1:
+        return f"Only one cluster was detected, suggesting limited modular structure or a dense hairball-like network. {tuning_hint}"
+
+    cluster_sizes = []
+    for cluster in clusters:
+        size = get_cluster_size(cluster)
+        if size is None:
+            return None
+        cluster_sizes.append(size)
+
+    total_size = sum(cluster_sizes)
+    if total_size == 0:
+        return None
+
+    largest_size = max(cluster_sizes)
+    largest_fraction = largest_size / total_size
+
+    if largest_fraction >= 0.75 and largest_size >= 10:
+        return (
+            f"One cluster contains {largest_size} of {total_size} clustered proteins "
+            f"({largest_fraction:.0%}), suggesting a dominant cluster or hairball-like network. "
+            f"{tuning_hint}"
+        )
+
+    return None
+
+
+def get_cluster_size(cluster):
+    if not isinstance(cluster, dict):
+        return None
+
+    value = cluster.get("proteinCount")
+    if isinstance(value, int):
         return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+
+    return None
 
 
 NETWORK_SCORE_CHANNELS = {
