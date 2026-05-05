@@ -1402,7 +1402,7 @@ async def string_help(
                 "Help topic to display. Choose one of:\n"
                 "  how_to_use_string, gsea, large_input, scores,\n"
                 "  missing_proteins, missing_species, proteome_annotation,\n"
-                "  regulatory_networks, line_colors\n\n"
+                "  regulatory_networks, line_colors, version_and_citation\n\n"
             )
         )
     ],
