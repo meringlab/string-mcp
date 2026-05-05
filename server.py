@@ -1584,15 +1584,17 @@ def group_homology_results(data):
                 "query": query_name,
                 "query_stringId": query_string_id,
                 "query_taxon": query_taxon,
-                "homologs": [],
+                "homologs_returned": 0,
+                "top_homologs": [],
             }
 
-        grouped[group_key]["homologs"].append({
+        grouped[group_key]["top_homologs"].append({
             "name": row.get("preferredName_B"),
             "stringId": row.get("stringId_B"),
             "taxon": row.get("ncbiTaxonId_B"),
             "bitscore": normalize_bitscore(row.get("bitscore")),
         })
+        grouped[group_key]["homologs_returned"] += 1
 
     return list(grouped.values())
 
