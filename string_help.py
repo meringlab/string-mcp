@@ -113,6 +113,13 @@ HELP_TOPICS = {
         
         "**Note:** Protein homology is shown for reference only and is *not included* in the combined confidence score."
     ),
+    "version_and_citation": (
+        "Current STRING version: v12.0\n\n"
+        "Citation:\n"
+        "Szklarczyk D, Nastou K, Koutrouli M, Kirsch R, Mehryary F, Hachilif R, Hu D, Peluso ME, Huang Q, Fang T, Doncheva NT, Pyysalo S, Bork P, Jensen LJ, von Mering C. "
+        "The STRING database in 2025: protein networks with directionality of regulation. "
+        "Nucleic Acids Res. 2025 Jan 6;53(D1):D730-D737. doi: 10.1093/nar/gkae1113. "
+        "PMID: 39558183.\n\n"
+        "PubMed: https://pubmed.ncbi.nlm.nih.gov/39558183/"
+    ),
 }
-
-
