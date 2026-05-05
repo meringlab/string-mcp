@@ -1076,6 +1076,13 @@ async def string_functional_annotation(
         str,
         Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
     ] = None,
+    detail_for_term: Annotated[
+        Optional[str],
+        Field(description=(
+            "Optional. Exact functional term ID to return with the full list of matching input proteins. "
+            "Use this when an overview result says a protein list was shortened or replaced with 'many'."
+        ))
+    ] = None,
 ) -> dict:
     """
     This tool retrieves curated functional annotations for a set of proteins.
@@ -1104,7 +1111,7 @@ async def string_functional_annotation(
             log_response_size(results)
             return results
         else:
-             results_truncated, truncation_notes = sort_and_truncate_functional_annotation(results, 'json')
+             results_truncated, truncation_notes = sort_and_truncate_functional_annotation(results, 'json', detail_for_term)
 
         log_response_size(results_truncated)
         return {"notes": truncation_notes, "results": results_truncated}  # Functional annotation per protein
@@ -1920,21 +1927,65 @@ def build_score_bins(edges, score_threshold):
     return score_bins
 
 
-def sort_and_truncate_functional_annotation(data, is_json):
-
-    size_cutoff = 50
+def sort_and_truncate_functional_annotation(data, is_json, detail_for_term=None):
+    size_cutoff = 200
+    exact_protein_list_cutoff = 25
+    remove_protein_field_after = 50
     truncation_notes = []
 
     if is_json.lower() == 'json':
-        
- 
+
         original_rows = len(data)
         data = sorted(data, key=lambda x: x["ratio_in_set"], reverse=True)
-        
+
+        if detail_for_term:
+            detail_key = detail_for_term.strip().lower()
+            data = [
+                row for row in data
+                if str(row.get("term", "")).strip().lower() == detail_key
+            ]
+            if data:
+                truncation_notes.append(
+                    f"Returned full input-protein lists for term {detail_for_term}."
+                )
+            else:
+                truncation_notes.append(
+                    "No matching term was found. Run without `detail_for_term` to inspect available terms and use the exact term ID."
+                )
+            return data, truncation_notes
+
         if len(data) > size_cutoff:
             data = data[:size_cutoff]
             truncation_notes.append(
                 f"The list was truncated to the first {size_cutoff} terms from {original_rows} original rows."
+            )
+
+        replaced_many = False
+        removed_late_proteins = False
+
+        for index, row in enumerate(data):
+            proteins = row.get("preferredNames")
+            if not isinstance(proteins, list):
+                continue
+
+            protein_count = len(proteins)
+            row["protein_count"] = protein_count
+
+            if index >= remove_protein_field_after:
+                row.pop("preferredNames", None)
+                removed_late_proteins = True
+            elif protein_count > exact_protein_list_cutoff:
+                row["preferredNames"] = "many"
+                replaced_many = True
+
+        if replaced_many:
+            truncation_notes.append(
+                f"For annotations covering more than {exact_protein_list_cutoff} input proteins, protein lists were replaced with 'many'. Use `detail_for_term` with the exact term ID to show all input proteins annotated with that term."
+            )
+
+        if removed_late_proteins:
+            truncation_notes.append(
+                f"For terms ranked after the first {remove_protein_field_after}, protein lists were omitted. Use `detail_for_term` with the exact term ID to show all input proteins annotated with that term."
             )
 
     return data, truncation_notes
