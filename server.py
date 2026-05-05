@@ -941,9 +941,13 @@ async def string_homology(
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
+        if 'error' in results:
+            log_response_size(results)
+            return results
+        grouped_results = group_homology_results(results)
 
-        log_response_size(results)
-        return {"results": results}
+        log_response_size(grouped_results)
+        return {"results": grouped_results}
 
 
 @mcp.tool(title="STRING: Get links to interaction evidence pages")
@@ -1561,6 +1565,46 @@ def truncate_network(data, input_score_threshold=None, size_cutoff=100, is_json=
         add_size_note = True
 
     return filtered, add_size_note, original_size
+
+
+def group_homology_results(data):
+    if not isinstance(data, list):
+        return data
+
+    grouped = {}
+
+    for row in data:
+        query_name = row.get("preferredName_A")
+        query_string_id = row.get("stringId_A")
+        query_taxon = row.get("ncbiTaxonId_A")
+        group_key = (query_string_id, query_name, query_taxon)
+
+        if group_key not in grouped:
+            grouped[group_key] = {
+                "query": query_name,
+                "query_stringId": query_string_id,
+                "query_taxon": query_taxon,
+                "homologs": [],
+            }
+
+        grouped[group_key]["homologs"].append({
+            "name": row.get("preferredName_B"),
+            "stringId": row.get("stringId_B"),
+            "taxon": row.get("ncbiTaxonId_B"),
+            "bitscore": normalize_bitscore(row.get("bitscore")),
+        })
+
+    return list(grouped.values())
+
+
+def normalize_bitscore(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        if isinstance(value, str):
+            normalized = value.replace("&lt;", "<").replace("&nbsp;", " ").strip()
+            return normalized
+        return value
 
 
 NETWORK_SCORE_CHANNELS = {
