@@ -341,8 +341,6 @@ async def string_interactions_query_set(
     #if show_query_node_labels is not None:
     #    params["show_query_node_labels"] = show_query_node_labels
 
-    size_cutoff = 100
-    add_size_note = False
     add_score_note = False
     add_shared_note = False
 
@@ -361,7 +359,8 @@ async def string_interactions_query_set(
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
         if 'error' in results: return results
-        else: results, add_size_note, original_size = truncate_network(results, required_score, size_cutoff)
+        else:
+            formatted_network = format_query_set_network(results, required_score)
 
         notes = []
 
@@ -369,12 +368,10 @@ async def string_interactions_query_set(
         if add_score_note:
             notes.append("The required_score parameter was lowered to 0 - showing all interactions. "
                          "IMPORTANT: If the interaction score is low (below 400), inform user about it.")
-        if not len(results):
+        if not len(formatted_network["network"]):
              notes.append(f"No interactions found in STRING database at that {required_score} cut-off.")
 
-        notes.append(f'There are {original_size} associations above specified cutoff.')
-        if add_size_note:
-            notes.append(f"The list was truncated to the top {size_cutoff} interactions from {original_size} associations above the specified cutoff.")
+        notes.extend(formatted_network["notes"])
      
         if add_shared_note:
             notes.append(
@@ -382,9 +379,21 @@ async def string_interactions_query_set(
                 "Verify whether direct or indirect interactions exist within this network, and inform the user accordingly."
             )
 
-        log_response_size(results)
+        response = {
+            "notes": notes,
+            "network_summary": formatted_network["network_summary"],
+            "network": formatted_network["network"],
+        }
 
-        return {"notes": notes, "network": results}
+        if formatted_network["node_interaction_counts"]:
+            response["node_interaction_counts"] = formatted_network["node_interaction_counts"]
+
+        if formatted_network["edge_sample"]:
+            response["edge_sample"] = formatted_network["edge_sample"]
+
+        log_response_size(response)
+
+        return response
 
 
 @mcp.tool(title="STRING: Get all interaction partners for proteins")
@@ -433,11 +442,7 @@ async def string_all_interaction_partners(
         `ascore` (coexpression), `escore` (experimental), `dscore` (database), `tscore` (text mining)
     """
 
-    limit = 100
-    size_cutoff = 100
-
     params = {"identifiers": identifiers}
-    params["limit"] = limit
 
     if species is not None:
         params["species"] = species
@@ -454,26 +459,23 @@ async def string_all_interaction_partners(
             log_response_size(results)
             return results
         else:
-            results_truncated, add_size_note, original_size = truncate_network(results, required_score, size_cutoff)
+            formatted_interactions = format_interaction_partners(results, required_score)
 
         notes = []
 
-        if original_size < limit:
-            notes.append(f'For this list STRING has found {original_size} associations above specified cutoff.')
+        notes.extend(formatted_interactions["notes"])
 
-        if add_size_note:
-            notes.append(f"The list was truncated to the top {size_cutoff} interactions from {original_size} returned associations above the specified cutoff.")
-        elif original_size == limit:
-            notes.append(
-                f"STRING returned the configured maximum of {limit} interactions. "
-                f"Do not report this as the total number of interactions; additional interactions may exist upstream."
-            )
-
-        if not len(results_truncated):
+        if not len(formatted_interactions["interactions"]):
              notes.append(f"No interactions found in STRING database at that {required_score} cut-off. Consider lowering the required_score.")
+
+        response = {
+            "notes": notes,
+            "node_summary": formatted_interactions["node_summary"],
+            "interactions": formatted_interactions["interactions"],
+        }
         
-        log_response_size(results_truncated)
-        return {"notes": notes, "interactions": results_truncated}
+        log_response_size(response)
+        return response
 
 
 @mcp.tool(title="STRING: Get interaction network image (image URL)")
@@ -1559,6 +1561,333 @@ def truncate_network(data, input_score_threshold=None, size_cutoff=100, is_json=
         add_size_note = True
 
     return filtered, add_size_note, original_size
+
+
+NETWORK_SCORE_CHANNELS = {
+    "nscore": "neighborhood",
+    "fscore": "fusion",
+    "pscore": "phylogenetic_profile",
+    "ascore": "coexpression",
+    "escore": "experiments",
+    "dscore": "databases",
+    "tscore": "textmining",
+}
+
+QUERY_SET_EDGE_SAMPLE_LIMIT = 100
+QUERY_SET_NODE_SUMMARY_LIMIT = 250
+PARTNER_INTERACTION_DETAIL_LIMIT = 500
+PARTNER_UNIQUE_PROTEIN_LIMIT = 2000
+
+
+def normalize_score_threshold(input_score_threshold):
+    try:
+        threshold = float(input_score_threshold)
+    except (TypeError, ValueError):
+        threshold = 400.0
+
+    if threshold > 1:
+        return threshold / 1000.0
+    return threshold
+
+
+def format_query_set_network(data, input_score_threshold=None, include_counts_when_compacted=False):
+    """
+    Keep query-set interaction output informative without dumping thousands of
+    full STRING rows. The full edge set is used for summary/counts; only the
+    displayed edge detail is reduced as networks become larger.
+    """
+    if not isinstance(data, list):
+        return {
+            "notes": ["STRING did not return a list of interactions. Reduce the score cut-off"],
+            "network_summary": {"edge_return_mode": "unmodified"},
+            "network": data,
+            "node_interaction_counts": [],
+            "edge_sample": [],
+        }
+
+    score_threshold = normalize_score_threshold(input_score_threshold)
+    filtered = [row for row in data if row.get("score", 0) >= score_threshold]
+    filtered.sort(key=lambda r: r.get("score", 0), reverse=True)
+
+    total_edges = len(filtered)
+    node_counts = build_node_interaction_counts(filtered)
+    network_summary = build_network_summary(filtered, node_counts, score_threshold)
+    node_counts_limited, node_counts_truncated = limit_list(node_counts, QUERY_SET_NODE_SUMMARY_LIMIT)
+
+    notes = [f"There are {total_edges} associations above specified cutoff."]
+    edge_sample = []
+    node_interaction_counts = []
+
+    if total_edges <= 30:
+        network_summary["edge_return_mode"] = "all_edges_full_nonzero_scores"
+        network = [compact_edge(row, "full") for row in filtered]
+    elif total_edges <= 100:
+        network_summary["edge_return_mode"] = "all_edges_compact_evidence"
+        network = [compact_edge(row, "evidence") for row in filtered]
+        if include_counts_when_compacted:
+            node_interaction_counts = node_counts_limited
+        notes.append(
+            "The network output was compacted: STRING protein IDs and zero-valued evidence channels were omitted."
+        )
+        notes.append(
+            "For detailed evidence-channel scores on specific interactions, subset the query to the proteins of interest and rerun the interaction query."
+        )
+    elif total_edges <= 500:
+        network_summary["edge_return_mode"] = "all_edges_score_only"
+        network = [compact_edge(row, "score_only") for row in filtered]
+        node_interaction_counts = node_counts_limited
+        notes.append(
+            "The network output was compacted: all interactions are shown, but evidence-channel scores were omitted."
+        )
+        notes.append(
+            "For detailed evidence-channel scores on specific interactions, subset the query to the proteins of interest and rerun the interaction query."
+        )
+    else:
+        network_summary["edge_return_mode"] = "summary_with_top_edge_sample"
+        network_summary["returned_edges"] = QUERY_SET_EDGE_SAMPLE_LIMIT
+        network = [compact_edge(row, "score_only") for row in filtered[:QUERY_SET_EDGE_SAMPLE_LIMIT]]
+        node_interaction_counts = node_counts_limited
+        notes.append(
+            f"The network is large, so only the top {QUERY_SET_EDGE_SAMPLE_LIMIT} interactions by combined score are shown in `network`."
+        )
+        notes.append(
+            "The node interaction counts and network summary were computed from all returned associations above the cutoff."
+        )
+        notes.append(
+            "Evidence-channel scores were omitted. For detailed evidence-channel scores on specific interactions, subset the query to the proteins of interest and rerun the interaction query."
+        )
+
+    if "returned_edges" not in network_summary:
+        network_summary["returned_edges"] = len(network)
+
+    network_summary["returned_node_interaction_counts"] = len(node_interaction_counts)
+    if node_counts_truncated:
+        notes.append(
+            f"Node interaction counts were truncated to the top {QUERY_SET_NODE_SUMMARY_LIMIT} nodes by degree."
+        )
+
+    return {
+        "notes": notes,
+        "network_summary": network_summary,
+        "network": network,
+        "node_interaction_counts": node_interaction_counts,
+        "edge_sample": edge_sample,
+    }
+
+
+def format_interaction_partners(data, input_score_threshold=None):
+    """
+    Compact partner-list output while preserving the full returned list.
+    This endpoint is often used for set-overlap questions rather than network
+    analysis, so the summary is node-centric instead of network-centric.
+    """
+    if not isinstance(data, list):
+        return {
+            "notes": ["STRING did not return a list of interaction partners."],
+            "node_summary": {"return_mode": "unmodified"},
+            "interactions": data,
+        }
+
+    score_threshold = normalize_score_threshold(input_score_threshold)
+    filtered = [row for row in data if row.get("score", 0) >= score_threshold]
+    filtered.sort(key=lambda r: r.get("score", 0), reverse=True)
+
+    total_interactions = len(filtered)
+    node_counts = build_node_interaction_counts(filtered)
+    node_counts_limited, node_counts_truncated = limit_list(node_counts, QUERY_SET_NODE_SUMMARY_LIMIT)
+    proteins_in_interactions = build_unique_protein_list(filtered)
+    proteins_limited, proteins_truncated = limit_list(
+        proteins_in_interactions,
+        PARTNER_UNIQUE_PROTEIN_LIMIT,
+    )
+
+    node_summary = {
+        "return_mode": "compact_interaction_list_with_limits",
+        "interactions_above_cutoff": total_interactions,
+        "interaction_detail_response_limit": PARTNER_INTERACTION_DETAIL_LIMIT,
+        "unique_protein_response_limit": PARTNER_UNIQUE_PROTEIN_LIMIT,
+        "required_score": int(score_threshold * 1000),
+        "nodes_with_interactions": len(node_counts),
+        "score_summary": build_score_summary(filtered),
+        "score_bins": build_score_bins(filtered, score_threshold),
+        "interaction_counts": node_counts_limited,
+        "returned_interaction_counts": len(node_counts_limited),
+        "proteins_in_returned_interactions": proteins_limited,
+        "returned_protein_names": len(proteins_limited),
+    }
+
+    if total_interactions <= 100:
+        interactions = [compact_edge(row, "evidence") for row in filtered]
+        node_summary["returned_interactions"] = len(interactions)
+        notes = [
+            f"STRING returned {total_interactions} interaction partner associations above specified cutoff.",
+            "The full returned interaction list is shown. STRING protein IDs and zero-valued evidence channels were omitted.",
+        ]
+    else:
+        interactions = [
+            compact_edge(row, "score_only")
+            for row in filtered[:PARTNER_INTERACTION_DETAIL_LIMIT]
+        ]
+        node_summary["returned_interactions"] = len(interactions)
+        notes = [
+            f"STRING returned {total_interactions} interaction partner associations above specified cutoff.",
+            f"The interaction list is shown in compact form with only protein names and combined scores, capped at {PARTNER_INTERACTION_DETAIL_LIMIT} interactions to protect agent context.",
+            "Evidence-channel scores were omitted. For detailed evidence-channel scores on specific interactions, subset the query to the proteins of interest and rerun the interaction query.",
+        ]
+
+    if total_interactions > len(interactions):
+        notes.append(
+            f"Detailed interaction rows were truncated to {len(interactions)} of {total_interactions}; use the protein-name list and node summary for set-overlap reasoning."
+        )
+
+    if node_counts_truncated:
+        notes.append(
+            f"Interaction counts were truncated to the top {QUERY_SET_NODE_SUMMARY_LIMIT} nodes by degree."
+        )
+
+    if proteins_truncated:
+        notes.append(
+            f"The unique protein-name list was truncated to {PARTNER_UNIQUE_PROTEIN_LIMIT} proteins; exact overlap against a larger user gene set may require subsetting or a higher score cutoff."
+        )
+
+    return {
+        "notes": notes,
+        "node_summary": node_summary,
+        "interactions": interactions,
+    }
+
+
+def limit_list(values, max_items):
+    if len(values) > max_items:
+        return values[:max_items], True
+    return values, False
+
+
+def build_unique_protein_list(edges):
+    proteins = set()
+
+    for row in edges:
+        a = row.get("preferredName_A")
+        b = row.get("preferredName_B")
+        if a:
+            proteins.add(a)
+        if b:
+            proteins.add(b)
+
+    return sorted(proteins)
+
+
+def compact_edge(row, mode):
+    if mode == "full":
+        edge = {
+            key: value
+            for key, value in row.items()
+            if key not in NETWORK_SCORE_CHANNELS or value
+        }
+        return edge
+
+    edge = {
+        "preferredName_A": row.get("preferredName_A"),
+        "preferredName_B": row.get("preferredName_B"),
+        "score": round(row.get("score", 0), 3),
+    }
+
+    if mode == "evidence":
+        evidence = {
+            label: round(row.get(score_key, 0), 3)
+            for score_key, label in NETWORK_SCORE_CHANNELS.items()
+            if row.get(score_key, 0)
+        }
+        if evidence:
+            edge["evidence"] = evidence
+
+    return edge
+
+
+def build_node_interaction_counts(edges):
+    node_stats = {}
+
+    for row in edges:
+        a = row.get("preferredName_A")
+        b = row.get("preferredName_B")
+        score = row.get("score", 0)
+
+        if not a or not b:
+            continue
+
+        for gene, neighbor in ((a, b), (b, a)):
+            stats = node_stats.setdefault(
+                gene,
+                {"gene": gene, "degree": 0, "weighted_degree": 0.0, "_neighbors": []},
+            )
+            stats["degree"] += 1
+            stats["weighted_degree"] += score
+            stats["_neighbors"].append((neighbor, score))
+
+    output = []
+    for stats in node_stats.values():
+        neighbors = sorted(stats["_neighbors"], key=lambda item: item[1], reverse=True)
+        output.append({
+            "gene": stats["gene"],
+            "degree": stats["degree"],
+            "weighted_degree": round(stats["weighted_degree"], 3),
+            "top_neighbors": [neighbor for neighbor, _ in neighbors[:5]],
+        })
+
+    output.sort(key=lambda item: (item["degree"], item["weighted_degree"]), reverse=True)
+    return output
+
+
+def build_network_summary(edges, node_counts, score_threshold):
+    total_edges = len(edges)
+    node_count = len(node_counts)
+    max_possible_edges = node_count * (node_count - 1) / 2
+    density = total_edges / max_possible_edges if max_possible_edges else 0
+
+    return {
+        "nodes_with_interactions": node_count,
+        "edges_above_cutoff": total_edges,
+        "required_score": int(score_threshold * 1000),
+        "density": round(density, 4),
+        "average_degree": round((2 * total_edges / node_count), 3) if node_count else 0,
+        "score_summary": build_score_summary(edges),
+        "score_bins": build_score_bins(edges, score_threshold),
+    }
+
+
+def build_score_summary(edges):
+    scores = [row.get("score", 0) for row in edges]
+
+    if not scores:
+        return {"min": 0, "mean": 0, "max": 0}
+
+    return {
+        "min": round(min(scores), 3),
+        "mean": round(sum(scores) / len(scores), 3),
+        "max": round(max(scores), 3),
+    }
+
+
+def build_score_bins(edges, score_threshold):
+    scores = [row.get("score", 0) for row in edges]
+
+    bins = [
+        (0.0, 0.4, "0.000-0.399"),
+        (0.4, 0.7, "0.400-0.699"),
+        (0.7, 0.9, "0.700-0.899"),
+        (0.9, 1.001, "0.900-1.000"),
+    ]
+
+    score_bins = {}
+    for lower, upper, label in bins:
+        if upper <= score_threshold:
+            continue
+        adjusted_lower = max(lower, score_threshold)
+        adjusted_label = label if adjusted_lower == lower else f"{adjusted_lower:.3f}-{upper - 0.001:.3f}"
+        count = sum(1 for score in scores if adjusted_lower <= score < upper)
+        score_bins[adjusted_label] = count
+
+    return score_bins
 
 
 def sort_and_truncate_functional_annotation(data, is_json):
