@@ -442,7 +442,7 @@ async def string_all_interaction_partners(
         `ascore` (coexpression), `escore` (experimental), `dscore` (database), `tscore` (text mining)
     """
 
-    params = {"identifiers": identifiers}
+    params = {"identifiers": identifiers, "limit": 0}
 
     if species is not None:
         params["species"] = species
@@ -1599,7 +1599,7 @@ def format_query_set_network(data, input_score_threshold=None, include_counts_wh
     if not isinstance(data, list):
         return {
             "notes": ["STRING did not return a list of interactions. Reduce the score cut-off"],
-            "network_summary": {"edge_return_mode": "unmodified"},
+            "network_summary": {},
             "network": data,
             "node_interaction_counts": [],
             "edge_sample": [],
@@ -1619,10 +1619,8 @@ def format_query_set_network(data, input_score_threshold=None, include_counts_wh
     node_interaction_counts = []
 
     if total_edges <= 30:
-        network_summary["edge_return_mode"] = "all_edges_full_nonzero_scores"
         network = [compact_edge(row, "full") for row in filtered]
     elif total_edges <= 100:
-        network_summary["edge_return_mode"] = "all_edges_compact_evidence"
         network = [compact_edge(row, "evidence") for row in filtered]
         if include_counts_when_compacted:
             node_interaction_counts = node_counts_limited
@@ -1633,34 +1631,24 @@ def format_query_set_network(data, input_score_threshold=None, include_counts_wh
             "For detailed evidence-channel scores on specific interactions, subset the query to the proteins of interest and rerun the interaction query."
         )
     elif total_edges <= 500:
-        network_summary["edge_return_mode"] = "all_edges_score_only"
         network = [compact_edge(row, "score_only") for row in filtered]
         node_interaction_counts = node_counts_limited
         notes.append(
-            "The network output was compacted: all interactions are shown, but evidence-channel scores were omitted."
+            "All interaction rows are shown, but evidence-channel details were removed because the number of returned interactions is above 100."
         )
         notes.append(
             "For detailed evidence-channel scores on specific interactions, subset the query to the proteins of interest and rerun the interaction query."
         )
     else:
-        network_summary["edge_return_mode"] = "summary_with_top_edge_sample"
-        network_summary["returned_edges"] = QUERY_SET_EDGE_SAMPLE_LIMIT
         network = [compact_edge(row, "score_only") for row in filtered[:QUERY_SET_EDGE_SAMPLE_LIMIT]]
         node_interaction_counts = node_counts_limited
         notes.append(
-            f"The network is large, so only the top {QUERY_SET_EDGE_SAMPLE_LIMIT} interactions by combined score are shown in `network`."
+            f"Only {len(network)} of {total_edges} interaction rows are shown because the number of returned interactions is above 500. Evidence-channel details were removed; subset the query to inspect detailed evidence for specific interactions."
         )
         notes.append(
             "The node interaction counts and network summary were computed from all returned associations above the cutoff."
         )
-        notes.append(
-            "Evidence-channel scores were omitted. For detailed evidence-channel scores on specific interactions, subset the query to the proteins of interest and rerun the interaction query."
-        )
 
-    if "returned_edges" not in network_summary:
-        network_summary["returned_edges"] = len(network)
-
-    network_summary["returned_node_interaction_counts"] = len(node_interaction_counts)
     if node_counts_truncated:
         notes.append(
             f"Node interaction counts were truncated to the top {QUERY_SET_NODE_SUMMARY_LIMIT} nodes by degree."
@@ -1704,8 +1692,6 @@ def format_interaction_partners(data, input_score_threshold=None):
     node_summary = {
         "return_mode": "compact_interaction_list_with_limits",
         "interactions_above_cutoff": total_interactions,
-        "interaction_detail_response_limit": PARTNER_INTERACTION_DETAIL_LIMIT,
-        "unique_protein_response_limit": PARTNER_UNIQUE_PROTEIN_LIMIT,
         "required_score": int(score_threshold * 1000),
         "nodes_with_interactions": len(node_counts),
         "score_summary": build_score_summary(filtered),
@@ -1731,13 +1717,11 @@ def format_interaction_partners(data, input_score_threshold=None):
         node_summary["returned_interactions"] = len(interactions)
         notes = [
             f"STRING returned {total_interactions} interaction partner associations above specified cutoff.",
-            f"The interaction list is shown in compact form with only protein names and combined scores, capped at {PARTNER_INTERACTION_DETAIL_LIMIT} interactions to protect agent context.",
-            "Evidence-channel scores were omitted. For detailed evidence-channel scores on specific interactions, subset the query to the proteins of interest and rerun the interaction query.",
         ]
 
     if total_interactions > len(interactions):
         notes.append(
-            f"Detailed interaction rows were truncated to {len(interactions)} of {total_interactions}; use the protein-name list and node summary for set-overlap reasoning."
+            f"Only {len(interactions)} of {total_interactions} interaction rows are shown because the number of returned interactions is above {PARTNER_INTERACTION_DETAIL_LIMIT}. Evidence-channel details were removed; subset the query to inspect detailed evidence for specific interactions."
         )
 
     if node_counts_truncated:
