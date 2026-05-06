@@ -1525,7 +1525,7 @@ async def string_help(
         Field(
             description=(
                 "Help topic to display. Choose one of:\n"
-                "  how_to_use_string, gsea, large_input, scores,\n"
+                "  how_to_use_string, gsea, large_input, cytoscape, scores,\n"
                 "  missing_proteins, missing_species, proteome_annotation,\n"
                 "  regulatory_networks, line_colors, version_and_citation\n\n"
             )
@@ -1536,7 +1536,7 @@ async def string_help(
     Provides explanatory text for STRING features and limitations.
     
     Use this tool when the user question involves:
-      - What is STRING is or how to use the tool (how_to_use_string)
+      - What is STRING is or how to use the tool (how_to_use_string, cytoscape)
       - functionality not available via MCP tools (e.g. GSEA, regulatory networks, large datasets).
       - meaning of the lines in the network (line_colors)
     """
