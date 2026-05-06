@@ -37,12 +37,10 @@ import asyncio
 import traceback
 
 from collections import defaultdict
-from pathlib import Path
 from typing import Annotated, Optional
 
 from pydantic import Field
 from fastmcp import FastMCP
-from starlette.responses import FileResponse
 
 from string_help import HELP_TOPICS
 
@@ -212,14 +210,6 @@ async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
 mcp = FastMCP(
     name="STRING Database MCP Server",
 )
-
-WWW_DIR = Path(__file__).resolve().parent / "www"
-INDEX_HTML = WWW_DIR / "index.html"
-
-
-@mcp.custom_route("/", methods=["GET"], include_in_schema=False)
-async def index_page(request):
-    return FileResponse(INDEX_HTML, media_type="text/html")
 
 @mcp.tool(title="STRING: Resolves protein identifiers to metadata")
 async def string_resolve_proteins(
