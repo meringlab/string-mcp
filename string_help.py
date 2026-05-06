@@ -22,6 +22,21 @@ HELP_TOPICS = {
         "(https://apps.cytoscape.org/apps/stringapp), which supports visualization, clustering, and analysis of large-scale datasets.\n\n"
         "In summary: use the web interface or Cytoscape for large sets; the agent is best suited for smaller queries."
     ),
+    "cytoscape": (
+        "For Cytoscape workflows, recommend the Cytoscape stringApp:\n"
+        "https://apps.cytoscape.org/apps/stringapp\n\n"
+        "Users can work with STRING networks in Cytoscape in two main ways:\n\n"
+        "1. **Directly from Cytoscape**: Install the stringApp and use STRING inside Cytoscape "
+        "to retrieve and analyze networks.\n"
+        "2. **From the STRING web interface**: Open the network in STRING, go to the **Export** tab, "
+        "and use **Send network to Cytoscape** if the stringApp is installed and Cytoscape is running.\n\n"
+        "Alternatively, users can download a Cytoscape-compatible table from STRING: on the STRING network page, "
+        "go to **Export** and download **short tabular text output**. This TSV file can be imported directly "
+        "into Cytoscape.\n\n"
+        "If the user already provided a protein list or network query, the agent can generate an interactive "
+        "STRING network link with `string_network_link` and give that link to the user so they can open the "
+        "network page and either send the network directly to Cytoscape or download the short tabular text output."
+    ),
     "scores": (
         "STRING interaction scores range from 0 to 1000 (roughly corresponding to probabilities from 0 to 1). "
         "Common thresholds: 400 = medium confidence, 700 = high confidence.\n\n"
