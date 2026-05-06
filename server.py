@@ -1471,21 +1471,32 @@ async def string_create_file(
     Embed the returned link directly in the final answer as markdown.
     """
 
-    params = {"filename": filename, "content": content}
+    params = {"filename": filename, "file_content": content}
    
     endpoint = '/api/json/generate_chat_file'
 
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
-        log_call(file_api_endpoint, {"filename": filename, "file_content": f"<{len(content)} characters>"})
+        log_call(endpoint, {"filename": filename, "file_content": f"<{len(content)} characters>"})
         results = await _post_json(client, endpoint, data=params)
 
-    if 'error' in results:
+    if isinstance(results, dict) and 'error' in results:
         log_response_size(results)
         return results
 
-    url = (
-        results.get("file_url")
-    )
+    file_result = results[0] if isinstance(results, list) and results else results
+
+    if not isinstance(file_result, dict):
+        error_payload = {
+            "error": {
+                "type": "file_api_error",
+                "message": "STRING file API returned an unexpected response.",
+                "diagnostics": {"response": results},
+            }
+        }
+        log_response_size(error_payload)
+        return error_payload
+
+    url = file_result.get("url")
 
     if not url:
         error_payload = {
@@ -1499,8 +1510,8 @@ async def string_create_file(
         return error_payload
 
     response = {
-        "filename": results.get("filename", filename),
-        "url": url
+        "filename": file_result.get("filename", filename),
+        "url": url,
     }
 
     log_response_size(response)
