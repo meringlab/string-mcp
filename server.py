@@ -54,7 +54,6 @@ except (FileNotFoundError, json.JSONDecodeError) as e:
 
 base_url = config.get("base_url")
 server_port = int(config.get("server_port", 0))
-file_api_endpoint = config.get("file_api_endpoint", "/api/json/chat_file")
 
 
 if not base_url:
@@ -1447,6 +1446,7 @@ async def string_create_file(
         Field(
             description=(
                 "Required. Suggested output filename, including a safe extension such as .txt, .tsv, .csv, .json, or .md. "
+                "Match the content format to the extension; prefer .tsv for tabular data. "
                 "Use a concise name that reflects the STRING analysis result, for example string-enrichment.tsv."
             )
         )
@@ -1472,10 +1472,12 @@ async def string_create_file(
     """
 
     params = {"filename": filename, "content": content}
+   
+    endpoint = '/api/json/generate_chat_file'
 
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
-        log_call(file_api_endpoint, {"filename": filename, "content": f"<{len(content)} characters>"})
-        results = await _post_json(client, file_api_endpoint, data=params)
+        log_call(file_api_endpoint, {"filename": filename, "file_content": f"<{len(content)} characters>"})
+        results = await _post_json(client, endpoint, data=params)
 
     if 'error' in results:
         log_response_size(results)
