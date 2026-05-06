@@ -54,6 +54,7 @@ except (FileNotFoundError, json.JSONDecodeError) as e:
 
 base_url = config.get("base_url")
 server_port = int(config.get("server_port", 0))
+file_api_endpoint = config.get("file_api_endpoint", "/api/json/chat_file")
 
 
 if not base_url:
@@ -1437,6 +1438,71 @@ async def string_query_species(
 
         log_response_size(response)
         return response
+
+
+@mcp.tool(title="STRING: Create a downloadable STRING result file")
+async def string_create_file(
+    filename: Annotated[
+        str,
+        Field(
+            description=(
+                "Required. Suggested output filename, including a safe extension such as .txt, .tsv, .csv, .json, or .md. "
+                "Use a concise name that reflects the STRING analysis result, for example string-enrichment.tsv."
+            )
+        )
+    ],
+    content: Annotated[
+        str,
+        Field(
+            description=(
+                "Required. File content generated from STRING data or STRING analysis results. "
+                "Do not store unrelated data or the full conversation transcript."
+            )
+        )
+    ],
+) -> dict:
+    """
+    Creates a downloadable file for STRING-derived results.
+
+    Use only for user-requested exports of STRING data, tables, protein lists,
+    enrichment results, networks, etc. Do not store unrelated data or full
+    conversation transcripts.
+
+    Embed the returned link directly in the final answer as markdown.
+    """
+
+    params = {"filename": filename, "content": content}
+
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
+        log_call(file_api_endpoint, {"filename": filename, "content": f"<{len(content)} characters>"})
+        results = await _post_json(client, file_api_endpoint, data=params)
+
+    if 'error' in results:
+        log_response_size(results)
+        return results
+
+    url = (
+        results.get("file_url")
+    )
+
+    if not url:
+        error_payload = {
+            "error": {
+                "type": "file_api_error",
+                "message": "STRING file API did not return a file URL.",
+                "diagnostics": {"response": results},
+            }
+        }
+        log_response_size(error_payload)
+        return error_payload
+
+    response = {
+        "filename": results.get("filename", filename),
+        "url": url
+    }
+
+    log_response_size(response)
+    return response
 
 
 @mcp.tool(title="STRING: Help / FAQ")
