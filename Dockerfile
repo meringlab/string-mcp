@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY server.py .
 COPY string_help.py .
+COPY www/ ./www/
 
 # Copy config directory
 COPY config/ ./config/
@@ -35,4 +36,3 @@ ENV PYTHONUNBUFFERED=1
 
 # Use exec form to ensure proper signal handling
 CMD ["python", "server.py"]
-

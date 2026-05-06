@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>STRING MCP Server</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      color-scheme: light dark;
+    }
+
+    body {
+      max-width: 820px;
+      margin: 4rem auto;
+      padding: 0 1.5rem;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+      color: CanvasText;
+      background: Canvas;
+    }
+
+    h1, h2 {
+      line-height: 1.2;
+    }
+
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+
+    code {
+      background: color-mix(in srgb, CanvasText 8%, Canvas);
+      padding: 0.15rem 0.35rem;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    pre {
+      overflow-x: auto;
+      padding: 1rem;
+      border-radius: 8px;
+      background: color-mix(in srgb, CanvasText 8%, Canvas);
+    }
+
+    a {
+      color: LinkText;
+    }
+
+    .box {
+      border: 1px solid color-mix(in srgb, CanvasText 20%, Canvas);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin: 1.25rem 0;
+      background: color-mix(in srgb, CanvasText 3%, Canvas);
+    }
+
+    .muted {
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <h1>STRING MCP Server</h1>
+
+  <p>
+    This is the official remote Model Context Protocol endpoint for the STRING protein-protein interaction database.
+    It is intended for MCP-compatible AI agents and applications.
+  </p>
+
+  <div class="box">
+    <strong>Remote MCP endpoint:</strong>
+    <p><code>https://mcp.string-db.org/</code></p>
+    <p class="muted">
+      Use this URL in an MCP client that supports remote servers over Streamable HTTP.
+    </p>
+  </div>
+
+  <h2>What is MCP?</h2>
+
+  <p>
+    MCP, the Model Context Protocol, is a standard way for AI applications to connect to external tools and data sources.
+    The STRING MCP server lets an AI agent access STRING data, for example to resolve protein identifiers, retrieve interaction networks,
+    inspect evidence, run enrichment analysis, look up homologs, or query proteins by biological function or disease association.
+  </p>
+
+  <h2>How to use the remote server</h2>
+
+  <p>
+    Open the settings or connector configuration in an MCP-compatible client and add a remote MCP server.
+    The exact interface depends on the client. The fields are typically similar to:
+  </p>
+
+  <pre><code>Name: STRING database
+URL: https://mcp.string-db.org/</code></pre>
+
+  <p>
+    Some clients may call this a <em>custom connector</em>, <em>remote MCP server</em>, <em>HTTP MCP server</em>,
+    or simply an <em>MCP server</em>.
+  </p>
+
+  <p>
+    After connecting, ask your AI assistant biological questions that require STRING data, for example:
+  </p>
+
+  <pre><code>Find interaction partners of TP53 in human.
+Run functional enrichment for these proteins: TP53, MDM2, CDKN1A, ATM.
+Map these gene names to STRING identifiers.
+Find homologs of human EGFR in mouse.</code></pre>
+
+  <h2>Run it locally</h2>
+
+  <p>
+    The server code is open source and can also be run locally.
+    This is useful for development, extending functionality, testing, and reproducible workflows.
+  </p>
+
+  <p>
+    Source code:
+    <a href="https://github.com/meringlab/string-mcp">https://github.com/meringlab/string-mcp</a>
+  </p>
+
+  <pre><code>git clone https://github.com/meringlab/string-mcp.git
+cd string-mcp
+pip install -r requirements.txt
+python server.py</code></pre>
+
+  <h2>Documentation</h2>
+
+  <ul>
+    <li>
+      STRING MCP documentation:
+      <a href="https://string-db.org/help/mcp/">https://string-db.org/help/mcp/</a>
+    </li>
+    <li>
+      Server source code:
+      <a href="https://github.com/meringlab/string-mcp">https://github.com/meringlab/string-mcp</a>
+    </li>
+    <li>
+      General MCP documentation:
+      <a href="https://modelcontextprotocol.io/">https://modelcontextprotocol.io/</a>
+    </li>
+    <li>
+      STRING chat:
+      <a href="https://string-db.org/cgi/chat">https://string-db.org/cgi/chat</a>
+    </li>
+  </ul>
+
+  <h2>API</h2>
+
+  <p>
+    For non-agentic programmatic access to STRING, use the regular
+    <a href="https://string-db.org/cgi/help?subpage=api">STRING API</a> instead.
+  </p>
+
+</body>
+</html>
+
