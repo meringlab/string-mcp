@@ -35,3 +35,4 @@ ENV PYTHONUNBUFFERED=1
 
 # Use exec form to ensure proper signal handling
 CMD ["python", "server.py"]
+
