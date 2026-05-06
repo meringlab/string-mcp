@@ -31,18 +31,35 @@
       background: color-mix(in srgb, CanvasText 8%, Canvas);
       padding: 0.15rem 0.35rem;
       border-radius: 4px;
-      white-space: nowrap;
+      overflow-wrap: anywhere;
     }
 
     pre {
-      overflow-x: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
       padding: 1rem;
       border-radius: 8px;
       background: color-mix(in srgb, CanvasText 8%, Canvas);
     }
 
+    pre code {
+      display: block;
+      padding: 0;
+      background: transparent;
+      white-space: inherit;
+    }
+
     a {
       color: LinkText;
+      overflow-wrap: anywhere;
+    }
+
+    ul {
+      padding-left: 1.25rem;
+    }
+
+    li {
+      margin: 0.5rem 0;
     }
 
     .box {
@@ -106,43 +123,50 @@ Run functional enrichment for these proteins: TP53, MDM2, CDKN1A, ATM.
 Map these gene names to STRING identifiers.
 Find homologs of human EGFR in mouse.</code></pre>
 
+  <h2>Documentation</h2>
+
+  <ul>
+    <li>
+      STRING MCP documentation:
+      <a href="https://string-db.org/help/mcp/">string-db.org/help/mcp/</a>
+    </li>
+    <li>
+      Server source code:
+      <a href="https://github.com/meringlab/string-mcp">github.com/meringlab/string-mcp</a>
+    </li>
+    <li>
+      General MCP documentation:
+      <a href="https://modelcontextprotocol.io/">modelcontextprotocol.io</a>
+    </li>
+  </ul>
+
+  <h2>STRING chat</h2>
+
+  <p>
+    STRING also provides a live chat interface where you can try the MCP server with STRING data directly.
+    This is a convenient way to test the available tools before configuring your own agent.
+  </p>
+
+  <p>
+    Go to <a href="https://string-db.org/cgi/chat">string-db.org/cgi/chat</a>.
+  </p>
+
   <h2>Run it locally</h2>
 
   <p>
-    The server code is open source and can also be run locally.
-    This is useful for development, extending functionality, testing, and reproducible workflows.
+    The hosted endpoint above is the usual way to use the STRING MCP server.
+    The open source server code can also be run locally for development, extension, testing, or reproducible workflows.
   </p>
 
   <p>
     Source code:
-    <a href="https://github.com/meringlab/string-mcp">https://github.com/meringlab/string-mcp</a>
+    <a href="https://github.com/meringlab/string-mcp">github.com/meringlab/string-mcp</a>
   </p>
 
   <pre><code>git clone https://github.com/meringlab/string-mcp.git
 cd string-mcp
 pip install -r requirements.txt
 python server.py</code></pre>
-
-  <h2>Documentation</h2>
-
-  <ul>
-    <li>
-      STRING MCP documentation:
-      <a href="https://string-db.org/help/mcp/">https://string-db.org/help/mcp/</a>
-    </li>
-    <li>
-      Server source code:
-      <a href="https://github.com/meringlab/string-mcp">https://github.com/meringlab/string-mcp</a>
-    </li>
-    <li>
-      General MCP documentation:
-      <a href="https://modelcontextprotocol.io/">https://modelcontextprotocol.io/</a>
-    </li>
-    <li>
-      STRING chat:
-      <a href="https://string-db.org/cgi/chat">https://string-db.org/cgi/chat</a>
-    </li>
-  </ul>
 
   <h2>API</h2>
 
@@ -153,4 +177,3 @@ python server.py</code></pre>
 
 </body>
 </html>
-
