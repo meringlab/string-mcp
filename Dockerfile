@@ -17,7 +17,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY server.py .
 COPY string_help.py .
-COPY www/ ./www/
 
 # Copy config directory
 COPY config/ ./config/
