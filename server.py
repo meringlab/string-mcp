@@ -393,7 +393,8 @@ async def string_interactions_query_set(
         if add_shared_note:
             notes.append(
                 "For two- and three-protein queries, the network was expanded by five additional proteins to reveal possible shared or indirect interactions between the queried proteins. "
-                "Verify whether direct or indirect interactions exist within this network, and inform the user accordingly. "
+                "Report only interactions that are directly between the queried proteins or that form a clear shared-interactor/indirect path connecting the queried proteins. "
+                "Do not mention expanded-network edges that are unrelated to the relationship between the queried proteins. "
                 "For a more thorough investigation of shared interactors, use the `string_all_interaction_partners` tool."
             )
 
@@ -634,6 +635,8 @@ async def string_visual_network(
             notes.append(
                 "For two- and three-protein queries, the network image was expanded by five additional proteins to reveal possible shared or indirect interactions between the queried proteins. "
                 "Do not infer interactions from the image alone; use `string_interactions_query_set` with the same parameters to verify whether direct or indirect interactions are present. "
+                "Report only interactions that are directly between the queried proteins or that form a clear shared-interactor/indirect path connecting the queried proteins. "
+                "Do not mention expanded-network edges that are unrelated to the relationship between the queried proteins. "
                 "For a more thorough investigation of shared interactors, use the `string_all_interaction_partners` tool.")
 
         notes.append("Embed the returned image link directly in the assistant response as a markdown image.")
@@ -898,7 +901,7 @@ async def string_network_link(
     add_score_note = False
     add_shared_note = False
 
-    if len(proteins.lower().split('%0d')) == 2 and extend_network is None:
+    if len(proteins.lower().split('%0d')) in [2,3] and extend_network is None:
         params['add_white_nodes'] = 5
         add_shared_note = True
 
@@ -918,7 +921,9 @@ async def string_network_link(
 
         if add_shared_note:
             notes.append(
-                "For two-protein queries, the network was expanded by five additional proteins to reveal possible shared or indirect interactions between the queried proteins."
+                "For two- and three-protein queries, the network link was expanded by five additional proteins to reveal possible shared or indirect interactions between the queried proteins. "
+                "When describing the link, tell the user they can inspect it for a potential direct interaction or clear shared-interactor/indirect path connecting the queried proteins. "
+                "Do not mention unrelated expanded-network edges as evidence about the relationship between the queried proteins."
             )
  
 
