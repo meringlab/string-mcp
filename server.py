@@ -65,6 +65,21 @@ if not server_port:
 timeout = float(config.get("timeout", 100))
 
 
+def _normalize_required_score(required_score: Optional[int]) -> Optional[int]:
+    if required_score is None:
+        return None
+
+    if isinstance(required_score, str):
+        required_score = required_score.strip()
+        if required_score.lower() in ("", "null", "none"):
+            return 0
+
+    try:
+        return int(required_score)
+    except (TypeError, ValueError):
+        return 0
+
+
 ## logging verbosity ## 
 
 log_verbosity = {}
@@ -329,6 +344,8 @@ async def string_interactions_query_set(
         `ascore` (coexpression), `escore` (experimental), `dscore` (database), `tscore` (text-mining)
     """
 
+    required_score = _normalize_required_score(required_score)
+
     params = {"identifiers": proteins}
     if species is not None:
         params["species"] = species
@@ -349,7 +366,7 @@ async def string_interactions_query_set(
         required_score = 0
         add_score_note = True
  
-    if len(proteins.lower().split('%0d')) == 2 and extend_network is None:
+    if len(proteins.lower().split('%0d')) in [2,3] and extend_network is None:
         params['add_white_nodes'] = 5
         add_shared_note = True
 
@@ -375,8 +392,9 @@ async def string_interactions_query_set(
      
         if add_shared_note:
             notes.append(
-                "For two-protein queries, the network was expanded by five additional proteins to reveal possible shared or indirect interactions between the queried proteins. "
-                "Verify whether direct or indirect interactions exist within this network, and inform the user accordingly."
+                "For two- and three-protein queries, the network was expanded by five additional proteins to reveal possible shared or indirect interactions between the queried proteins. "
+                "Verify whether direct or indirect interactions exist within this network, and inform the user accordingly. "
+                "For a more thorough investigation of shared interactors, use the `string_all_interaction_partners` tool."
             )
 
         response = {
@@ -441,6 +459,8 @@ async def string_all_interaction_partners(
         `nscore` (neighborhood), `fscore` (fusion), `pscore` (phylogenetic profile),  
         `ascore` (coexpression), `escore` (experimental), `dscore` (database), `tscore` (text mining)
     """
+
+    required_score = _normalize_required_score(required_score)
 
     params = {"identifiers": identifiers, "limit": 0}
 
@@ -560,6 +580,8 @@ async def string_visual_network(
     Input parameters should match those used in related STRING tools (e.g. `string_interactions_query_set`), unless otherwise specified.
 
     """
+    required_score = _normalize_required_score(required_score)
+
     params = {"identifiers": proteins}
     if species is not None:
         params["species"] = species
@@ -591,7 +613,7 @@ async def string_visual_network(
         params["required_score"] = 0
         add_score_note = True
    
-    if len(proteins.lower().split('%0d')) == 2 and extend_network is None:
+    if len(proteins.lower().split('%0d')) in [2,3] and extend_network is None:
         params['add_white_nodes'] = 5
         add_shared_note = True
 
@@ -604,13 +626,15 @@ async def string_visual_network(
 
         if add_score_note:
             notes.append("For small queries, the `required_score` parameter was lowered to 0.")
-        notes.append("The generated image is only a visualization — it does not constitute evidence of interaction. "
-                     "Always verify interactions using `string_interactions_query_set` with the same parameters.")
+        notes.append("Internal guidance: do not repeat this note to the user. The user can inspect the generated image, "
+                     "but you should not infer or report specific interaction details from the image alone. "
+                     "Use `string_interactions_query_set` with the same parameters to verify direct or indirect interactions.")
 
         if add_shared_note:
             notes.append(
-                "For two-protein queries, the network was expanded by five additional proteins to reveal possible shared or indirect interactions between the queried proteins. "
-                "Use `string_interactions_query_set` with the same parameters to verify whether direct or indirect interactions are present.")
+                "For two- and three-protein queries, the network image was expanded by five additional proteins to reveal possible shared or indirect interactions between the queried proteins. "
+                "Do not infer interactions from the image alone; use `string_interactions_query_set` with the same parameters to verify whether direct or indirect interactions are present. "
+                "For a more thorough investigation of shared interactors, use the `string_all_interaction_partners` tool.")
 
         notes.append("Embed the returned image link directly in the assistant response as a markdown image.")
 
@@ -693,6 +717,8 @@ async def string_network_clustering(
 
 
     """
+
+    required_score = _normalize_required_score(required_score)
 
     params = {"identifiers": proteins}
     if species is not None:
@@ -852,6 +878,8 @@ async def string_network_link(
     
     Input parameters should match those used in related STRING tools unless otherwise specified.
     """
+    required_score = _normalize_required_score(required_score)
+
     params = {"identifiers": proteins}
     if species is not None:
         params["species"] = species
@@ -1242,6 +1270,8 @@ async def string_ppi_enrichment(
 
     Example identifiers: "SMO%0dTP53"
     """
+    required_score = _normalize_required_score(required_score)
+
     params = {"identifiers": identifiers}
     if species is not None:
         params["species"] = species
