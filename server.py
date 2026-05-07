@@ -997,7 +997,7 @@ async def string_interaction_evidence(
     
     It returns URLs linking to STRING’s evidence pages, which display the underlying data sources 
     (experimental results, publications, and curated databases) supporting each predicted interaction.  
-    NOTE: A link is returned for every A–B protein pair, **even if no evidence or interaction exists** — the link itself should not be interpreted as proof of interaction.
+    Internal guidance: a link is returned for every A–B protein pair, **even if no evidence or interaction exists**. Do not tell the user the link itself is proof of interaction.
     
     Show each link to the user as a markdown hyperlink.
     
@@ -1023,7 +1023,8 @@ async def string_interaction_evidence(
 
     notes = []
     notes.append(
-        "The links are generated from templates — their existence is not proof of interaction. "
+        "Internal guidance: do not repeat this note to the user. The links are generated from templates, so their existence alone is not proof of interaction. "
+        "Tell the user they can inspect the evidence page for a potential direct interaction and any indirect interaction context. "
         "Use `string_interactions_query_set` to confirm whether the interaction is supported by STRING evidence."
     )
     notes.append("Embed the returned link(s) directly in the assistant response as a markdown hyperlink.")
