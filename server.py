@@ -1048,6 +1048,14 @@ async def string_enrichment(
     species: Annotated[
         Optional[str],
         Field(description="Optional. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX). DO NOT SET unless user explicitly requests.")
+    ] = None,
+    expand_category: Annotated[
+        Optional[str],
+        Field(description=(
+            "Optional. Return only this enrichment category with expanded term coverage and a larger per-term "
+            "gene-list cutoff. Use a category from metadata.category_summary, e.g. Process, KEGG, PMID, "
+            "NetworkNeighborAL, or Keyword."
+        ))
     ] = None
 ) -> dict:
     """This tool retrieves functional enrichment for a set of proteins using STRING.
@@ -1058,6 +1066,10 @@ async def string_enrichment(
     - Focus summaries on the top categories and most relevant terms for the results. Always report FDR for each claim.
     - Report FDR as a human-readable value (e.g. 2.3e-5 or 0.023).
     - IMPORTANT: Remember to suggest showing an enrichment graph for a specific category of user interest (e.g., GO, KEGG)
+    - Very large responses are capped while preserving category diversity.
+    - Use `expand_category` to return only one category with expanded term coverage and per-term gene details.
+    - If a row has `preferredNames_omitted: true`, do not infer which proteins are in that term from the returned rows.
+      Use `string_functional_annotation` with the same proteins/species and `detail_for_term` set to the exact term ID.
 
     Output fields (per enriched term):
       - category: Term category (e.g., GO Process, KEGG pathway)
@@ -1065,11 +1077,19 @@ async def string_enrichment(
       - number_of_genes: Number of input genes with this term
       - number_of_genes_in_background: Number of background genes with this term
       - ncbiTaxonId: NCBI taxon ID
-      - inputGenes: Gene names from your input
-      - preferredNames: Protein names matching your input order
+      - preferredNames: Canonical protein names, only when the full per-term list is short enough to show
+      - proteinCount: Number of proteins matching this term
+      - preferredNames_omitted: True when the gene list was omitted instead of showing a misleading partial list
       - p_value: Raw p-value
       - fdr: False Discovery Rate (B-H corrected p-value)
       - description: Description of the enriched term
+
+    Response metadata:
+      - input_gene_name_mapping: Only included when displayed gene lists contain submitted identifiers that differ
+        from STRING preferred names.
+      - category_summary: Total and returned term counts per category; use `expand_category` for categories
+        where `truncated` is true or where the user wants deeper category-specific detail.
+      - truncated_categories / omitted_categories: Categories with terms not shown in the current response.
     """
     params = {"identifiers": proteins}
     if species is not None:
@@ -1084,17 +1104,28 @@ async def string_enrichment(
             log_response_size(results)
             return results
         else:
-            results_truncated, truncation_notes = truncate_enrichment(results, 'json')
+            results_truncated, truncation_notes, metadata = truncate_enrichment(
+                results, 'json', expand_category=expand_category
+            )
 
         notes = []
         notes.extend(truncation_notes)
         if not results_truncated:
-            notes.append("AGENT MUST tell the user: No statistically significant enrichment was observed. "
-                         "This means the proteins in their list do not group into known pathways or functions "
-                         "more than would be expected by random chance.")
+            if expand_category:
+                notes.append(
+                    f"AGENT MUST tell the user: No statistically significant enrichment terms were found "
+                    f"for category `{expand_category}`."
+                )
+            else:
+                notes.append("AGENT MUST tell the user: No statistically significant enrichment was observed. "
+                             "This means the proteins in their list do not group into known pathways or functions "
+                             "more than would be expected by random chance.")
 
         log_response_size(results_truncated)
-        return {"notes": notes, "results": results_truncated}
+        response = {"notes": notes, "results": results_truncated}
+        if metadata:
+            response["metadata"] = metadata
+        return response
 
 
 @mcp.tool(title="STRING: Retrieve functional annotations for proteins")
@@ -1111,7 +1142,7 @@ async def string_functional_annotation(
         Optional[str],
         Field(description=(
             "Optional. Exact functional term ID to return with the full list of matching input proteins. "
-            "Use this when an overview result says a protein list was shortened or replaced with 'many'."
+            "Use this when a previous result says a protein list was shortened, omitted, or replaced with 'many'."
         ))
     ] = None,
 ) -> dict:
@@ -1135,7 +1166,7 @@ async def string_functional_annotation(
     endpoint = "/api/json/functional_annotation"
 
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
-        params = {"identifiers": identifiers, "species": species}
+        params = {"identifiers": identifiers, "species": species, "apiAllowKegg": 1}
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
         if 'error' in results:
@@ -1591,45 +1622,262 @@ async def string_help(
 # ---- MCP server helper functions ----
 
 
-def truncate_enrichment(data, is_json):
-    term_cutoff = 20   # max terms per category
-    size_cutoff = 15   # max proteins listed per term
+def _enrichment_category_key(category):
+    if category is None:
+        return ""
+
+    key = " ".join(str(category).replace("_", " ").replace("-", " ").split()).lower()
+    aliases = {
+        "biological process": "process",
+        "go biological process": "process",
+        "go process": "process",
+        "molecular function": "function",
+        "go molecular function": "function",
+        "go function": "function",
+        "cellular component": "component",
+        "go cellular component": "component",
+        "go component": "component",
+        "keywords": "keyword",
+        "reference publication": "pmid",
+        "reference publications": "pmid",
+        "publication": "pmid",
+        "publications": "pmid",
+        "pubmed": "pmid",
+        "local network cluster": "networkneighboral",
+        "local network clusters": "networkneighboral",
+        "network neighbor al": "networkneighboral",
+    }
+    return aliases.get(key, key)
+
+
+def _select_category_aware_rows(rows, total_limit):
+    groups = defaultdict(list)
+    category_order = []
+
+    for row in rows:
+        category = row.get("category")
+        if category not in groups:
+            category_order.append(category)
+        groups[category].append(row)
+
+    allowances = {category: 0 for category in category_order}
+    remaining = total_limit
+
+    while remaining > 0:
+        progressed = False
+        for category in category_order:
+            if allowances[category] < len(groups[category]):
+                allowances[category] += 1
+                remaining -= 1
+                progressed = True
+                if remaining == 0:
+                    break
+        if not progressed:
+            break
+
+    selected = []
+    selected_counts = defaultdict(int)
+    for row in rows:
+        category = row.get("category")
+        if selected_counts[category] < allowances[category]:
+            selected.append(row)
+            selected_counts[category] += 1
+
+    return selected
+
+
+def _prepare_enrichment_rows(rows, gene_cutoff):
+    prepared_rows = []
+    mapping = []
+    seen_mapping = set()
+    skipped_mapping = False
+    omitted_gene_lists = False
+
+    for row in rows:
+        row_copy = dict(row)
+        input_genes = row_copy.pop("inputGenes", None)
+        preferred_names = row_copy.get("preferredNames")
+
+        if isinstance(preferred_names, list):
+            protein_count = len(preferred_names)
+            row_copy["proteinCount"] = protein_count
+
+            if protein_count > gene_cutoff:
+                row_copy.pop("preferredNames", None)
+                row_copy["preferredNames_omitted"] = True
+                omitted_gene_lists = True
+            elif isinstance(input_genes, list):
+                if len(input_genes) == len(preferred_names):
+                    for input_gene, preferred_name in zip(input_genes, preferred_names):
+                        if input_gene == preferred_name:
+                            continue
+                        pair = (str(input_gene), str(preferred_name))
+                        if pair not in seen_mapping:
+                            seen_mapping.add(pair)
+                            mapping.append({"input": input_gene, "preferred": preferred_name})
+                else:
+                    skipped_mapping = True
+        elif "number_of_genes" in row_copy:
+            row_copy["proteinCount"] = row_copy["number_of_genes"]
+
+        prepared_rows.append(row_copy)
+
+    return prepared_rows, mapping, skipped_mapping, omitted_gene_lists
+
+
+def _build_enrichment_category_metadata(rows, selected_rows):
+    total_counts = defaultdict(int)
+    returned_counts = defaultdict(int)
+    category_order = []
+
+    for row in rows:
+        category = row.get("category")
+        if category not in total_counts:
+            category_order.append(category)
+        total_counts[category] += 1
+
+    for row in selected_rows:
+        returned_counts[row.get("category")] += 1
+
+    category_summary = []
+    truncated_categories = []
+    omitted_categories = []
+
+    for category in category_order:
+        total_terms = total_counts[category]
+        returned_terms = returned_counts[category]
+        truncated = returned_terms < total_terms
+        category_name = category if category is not None else "unknown"
+
+        category_summary.append({
+            "category": category_name,
+            "total_terms": total_terms,
+            "returned_terms": returned_terms,
+            "truncated": truncated,
+        })
+
+        if returned_terms == 0:
+            omitted_categories.append(category_name)
+        elif truncated:
+            truncated_categories.append(category_name)
+
+    return category_summary, truncated_categories, omitted_categories
+
+
+def truncate_enrichment(data, is_json, expand_category=None):
+    overview_term_cutoff = 300
+    expanded_term_cutoff = 300
+    overview_gene_cutoff = 11
+    expanded_gene_cutoff = 20
+    low_priority_categories = {"pmid", "networkneighboral", "keyword"}
+    low_priority_overview_cutoff = 5
     truncation_notes = []
+    metadata = {}
 
-    if is_json.lower() == 'json':
-        filtered_data = []
-        category_count = defaultdict(int)
-        original_rows = len(data)
+    if is_json.lower() != 'json' or not isinstance(data, list):
+        return data, truncation_notes, metadata
 
-        for row in data:
-            category = row['category']
-            category_count[category] += 1
+    rows = [row for row in data if isinstance(row, dict)]
+    original_rows = len(rows)
+    requested_category = expand_category.strip() if isinstance(expand_category, str) else None
+    metadata_source_rows = rows
 
-            # Skip if we already hit the cap for this category
-            if category_count[category] > term_cutoff:
-                continue
+    if requested_category:
+        requested_key = _enrichment_category_key(requested_category)
+        category_rows = [
+            row for row in rows
+            if _enrichment_category_key(row.get("category")) == requested_key
+        ]
+        metadata_source_rows = category_rows
+        selected_rows = category_rows[:expanded_term_cutoff]
+        gene_cutoff = expanded_gene_cutoff
 
-            # Save total before truncation
-            row['inputGenes_total'] = len(row['inputGenes'])
-            row['proteinCount'] = len(row['preferredNames'])
-
-            if len(row['inputGenes']) > size_cutoff:
-                row['inputGenes'] = row['inputGenes'][:size_cutoff] + ["..."]
-                row['preferredNames'] = row['preferredNames'][:size_cutoff] + ["..."]
-                row['truncated'] = True
-            else:
-                row['truncated'] = False
-
-            filtered_data.append(row)
-
-        if len(filtered_data) < original_rows:
+        if category_rows:
+            category_name = category_rows[0].get("category", requested_category)
             truncation_notes.append(
-                f"Enrichment results were truncated to the top {term_cutoff} terms per category for readability."
+                f"Returned only category `{category_name}` with expanded term coverage; gene lists are shown only when they contain {gene_cutoff} or fewer canonical proteins."
+            )
+            if len(selected_rows) < len(category_rows):
+                truncation_notes.append(
+                    f"Category `{category_name}` was truncated to the first {expanded_term_cutoff} terms from {len(category_rows)} available terms."
+                )
+        else:
+            available_categories = sorted({
+                str(row.get("category")) for row in rows if row.get("category") is not None
+            })
+            if available_categories:
+                truncation_notes.append(
+                    f"No enrichment terms matched category `{requested_category}`. Available categories: {', '.join(available_categories)}."
+                )
+            else:
+                truncation_notes.append(
+                    f"No enrichment terms matched category `{requested_category}`."
+                )
+    else:
+        gene_cutoff = overview_gene_cutoff
+        selected_rows = rows
+
+        if original_rows > overview_term_cutoff:
+            low_priority_counts = defaultdict(int)
+            category_limited_rows = []
+            capped_low_priority = set()
+
+            for row in rows:
+                category_key = _enrichment_category_key(row.get("category"))
+                if category_key in low_priority_categories:
+                    low_priority_counts[category_key] += 1
+                    if low_priority_counts[category_key] > low_priority_overview_cutoff:
+                        capped_low_priority.add(category_key)
+                        continue
+                category_limited_rows.append(row)
+
+            if capped_low_priority:
+                truncation_notes.append(
+                    f"Enrichment results exceeded {overview_term_cutoff} terms, so PMID/reference publications, local network clusters, and keywords were limited to the first {low_priority_overview_cutoff} terms each."
+                )
+
+            if len(category_limited_rows) > overview_term_cutoff:
+                selected_rows = _select_category_aware_rows(category_limited_rows, overview_term_cutoff)
+            else:
+                selected_rows = category_limited_rows
+
+        if len(selected_rows) < original_rows:
+            truncation_notes.append(
+                f"Enrichment results were truncated to {len(selected_rows)} of {original_rows} terms under a {overview_term_cutoff}-term global cap. Use `expand_category` with a category name to return that category with expanded term coverage."
             )
 
-        data = filtered_data
+    category_summary, truncated_categories, omitted_categories = _build_enrichment_category_metadata(
+        metadata_source_rows, selected_rows
+    )
+    if category_summary:
+        metadata["category_summary"] = category_summary
+    if truncated_categories:
+        metadata["truncated_categories"] = truncated_categories
+    if omitted_categories:
+        metadata["omitted_categories"] = omitted_categories
 
-    return data, truncation_notes
+    prepared_rows, mapping, skipped_mapping, omitted_gene_lists = _prepare_enrichment_rows(
+        selected_rows, gene_cutoff
+    )
+
+    if mapping:
+        metadata["input_gene_name_mapping"] = mapping
+        truncation_notes.append(
+            "Input identifiers that differed from STRING preferred names are listed once in metadata, only for displayed gene lists."
+        )
+
+    if skipped_mapping:
+        truncation_notes.append(
+            "Some input-to-preferred gene mappings were skipped because STRING returned unmatched gene-list lengths."
+        )
+
+    if omitted_gene_lists:
+        truncation_notes.append(
+            f"`preferredNames_omitted: true` means the term matched more than {gene_cutoff} proteins, so no partial gene list was shown. "
+            "AGENT MUST call `string_functional_annotation` with the same identifiers/species and `detail_for_term` set to that row's exact term ID if the user wants the full gene list."
+        )
+
+    return prepared_rows, truncation_notes, metadata
 
 
 def truncate_similarity_search(data):
