@@ -996,15 +996,14 @@ async def string_interaction_evidence(
     ] = None,
 ) -> dict:
     """
-    Retrieves direct links to STRING evidence pages for protein–protein interactions.
+    Retrieves direct links to STRING evidence pages for protein–protein interaction pairs.
     
-    Use this tool when the user asks for **details**, **evidence**, or **experimental validation** of an interaction between proteins.
+    Use this tool only when a STRING evidence page/link is needed. To determine whether
+    an interaction is supported, use `string_interactions_query_set`.
     
     It returns URLs linking to STRING’s evidence pages, which display the underlying data sources 
     (experimental results, publications, and curated databases) supporting each predicted interaction.  
-    Internal guidance: a link is returned for every A–B protein pair, **even if no evidence or interaction exists**. Do not tell the user the link itself is proof of interaction.
-    
-    Show each link to the user as a markdown hyperlink.
+    A URL can be generated even for unsupported pairs; the URL is not itself an interaction verdict.
     
     Parameters:
     - **identifier_a**: Query protein identifier (Protein A)
@@ -1012,11 +1011,10 @@ async def string_interaction_evidence(
     - **species**: NCBI taxonomy ID (e.g. `9606` for human or `10090` for mouse)
     
     Typical user questions that should trigger this tool:
-    - "Can you show me the evidence for this interaction?"
+    - "Can you show me the STRING evidence for this interaction?"
     - "Show me the details supporting this interaction."
     - "What supports the interaction between TP53 and MDM2?"
-    - "Is there experimental validation for this interaction?"
-    - "Where can I find the STRING evidence page for this pair?"
+    - "Where can I find the STRING evidence for this pair?"
     """
 
     identifiers_b = identifiers_b.replace('%0D', '%0d')
@@ -1028,11 +1026,9 @@ async def string_interaction_evidence(
 
     notes = []
     notes.append(
-        "Internal guidance: do not repeat this note to the user. The links are generated from templates, so their existence alone is not proof of interaction. "
-        "Tell the user they can inspect the evidence page for a potential direct interaction and any indirect interaction context. "
-        "Use `string_interactions_query_set` to confirm whether the interaction is supported by STRING evidence."
+        "Internal guidance: do not repeat this note to the user. If the user asked whether an interaction exists or is supported, call `string_interactions_query_set` for confirmation."
     )
-    notes.append("Embed the returned link(s) directly in the assistant response as a markdown hyperlink.")
+    notes.append("Embed returned link(s) as markdown hyperlinks when an evidence page/link is needed.")
 
     log_response_size(output)
     return {"notes": notes, "results": output}
@@ -1531,9 +1527,17 @@ async def string_create_file(
     """
     Creates a downloadable file for STRING-derived results.
 
-    Use only for user-requested exports of STRING data, tables, protein lists,
-    enrichment results, networks, etc. Do not store unrelated data or full
-    conversation transcripts.
+    Use this tool when the user explicitly asks to download, save, export,
+    or receive a file containing STRING data, tables, protein lists,
+    enrichment results, networks, etc.
+
+    When a response would otherwise include a publication-style or supplementary
+    result table, or another table clearly intended for reuse outside chat,
+    mention that a downloadable TSV/CSV file can be generated on request. Ask
+    whether they want the file, unless they already requested it. Do not create
+    the file until the user asks for it.
+
+    Do not store unrelated data or full conversation transcripts.
 
     Embed the returned link directly in the final answer as markdown.
     """
