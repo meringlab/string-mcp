@@ -1538,8 +1538,6 @@ async def string_create_file(
     the file until the user asks for it.
 
     Do not store unrelated data or full conversation transcripts.
-
-    Embed the returned link directly in the final answer as markdown.
     """
 
     params = {"filename": filename, "file_content": content}
@@ -1583,6 +1581,9 @@ async def string_create_file(
     response = {
         "filename": file_result.get("filename", filename),
         "url": url,
+        "notes": [
+            "Internal guidance: do not repeat this note to the user. The generated file exists on the server, but the user cannot access it unless the assistant embeds the returned URL in the final answer. Include the URL as a markdown link."
+        ],
     }
 
     log_response_size(response)
