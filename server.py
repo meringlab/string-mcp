@@ -1519,7 +1519,8 @@ async def string_create_file(
         Field(
             description=(
                 "Required. File content generated from STRING data or STRING analysis results. "
-                "Do not store unrelated data or the full conversation transcript."
+                "For .csv/.tsv, provide one rectangular table with one header row; "
+                "put notes/caveats in the chat answer, or use .md/.txt for narrative output."
             )
         )
     ],
