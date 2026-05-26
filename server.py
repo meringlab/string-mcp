@@ -1362,9 +1362,9 @@ async def string_proteins_for_term(
       - term: Exact identifier for the functional term.
       - description: The free text description of the term.
       - proteinCount: Number of proteins annotated with that term
-      - preferredNames: List of human-readable protein names when returned
+      - preferredNames: Full protein-name list when `detail_for_term` is set
       - stringIds: STRING protein identifiers when returned
-      - preferredNames_omitted: True when a row omits a large protein-name list
+      - preferredNames_omitted: True when a row omits the protein-name list
       - stringIds_omitted: True when STRING identifiers are omitted
 
     """
@@ -2467,7 +2467,6 @@ def sort_and_truncate_functional_annotation(data, is_json, detail_for_term=None)
  
 def truncate_functional_terms(data, is_json, detail_for_term=None):
     term_size_cutoff = 10
-    protein_name_cutoff = 25
     identifier_cutoff = 25
     truncation_notes = []
 
@@ -2489,9 +2488,8 @@ def truncate_functional_terms(data, is_json, detail_for_term=None):
 
             detail_row = _prepare_functional_term_row(
                 matching_rows[0],
-                protein_name_cutoff=protein_name_cutoff,
                 identifier_cutoff=identifier_cutoff,
-                omit_large_protein_lists=False,
+                include_protein_names=True,
             )
             if detail_row.get("stringIds_omitted", False):
                 truncation_notes.append(
@@ -2501,21 +2499,12 @@ def truncate_functional_terms(data, is_json, detail_for_term=None):
             return [detail_row], truncation_notes
 
         filtered_data = []
-        omitted_protein_lists = False
-        omitted_identifiers = False
 
         for row in data[:term_size_cutoff]:
             row_copy = _prepare_functional_term_row(
                 row,
-                protein_name_cutoff=protein_name_cutoff,
                 identifier_cutoff=identifier_cutoff,
-                omit_large_protein_lists=True,
-            )
-            omitted_protein_lists = (
-                omitted_protein_lists or row_copy.get("preferredNames_omitted", False)
-            )
-            omitted_identifiers = (
-                omitted_identifiers or row_copy.get("stringIds_omitted", False)
+                include_protein_names=False,
             )
 
             filtered_data.append(row_copy)
@@ -2524,14 +2513,12 @@ def truncate_functional_terms(data, is_json, detail_for_term=None):
             truncation_notes.append(
                 f"Functional-term results were truncated to the top {term_size_cutoff} terms for readability."
             )
-        if omitted_protein_lists:
+        if filtered_data:
             truncation_notes.append(
-                f"Protein-name lists above {protein_name_cutoff} proteins are omitted "
-                "and are unavailable for membership checks."
+                "Protein-name lists are returned only when `detail_for_term` is set to one exact term ID."
             )
-        if omitted_identifiers:
             truncation_notes.append(
-                f"STRING identifiers are omitted for protein lists above {identifier_cutoff} proteins."
+                "For follow-up, use returned order; if equally relevant, prefer KEGG/GO/Reactome over disease/keyword terms."
             )
 
         data = filtered_data
@@ -2539,7 +2526,7 @@ def truncate_functional_terms(data, is_json, detail_for_term=None):
     return data, truncation_notes
 
 
-def _prepare_functional_term_row(row, protein_name_cutoff, identifier_cutoff, omit_large_protein_lists):
+def _prepare_functional_term_row(row, identifier_cutoff, include_protein_names):
     row_copy = dict(row)
     preferred_names = row_copy.get("preferredNames")
 
@@ -2549,12 +2536,15 @@ def _prepare_functional_term_row(row, protein_name_cutoff, identifier_cutoff, om
     protein_count = len(preferred_names)
     row_copy["proteinCount"] = protein_count
 
-    if omit_large_protein_lists and protein_count > protein_name_cutoff:
+    if not include_protein_names:
         row_copy.pop("preferredNames", None)
+        row_copy.pop("stringIds", None)
         row_copy["preferredNames_omitted"] = True
+        row_copy["stringIds_omitted"] = True
         row_copy["truncated"] = True
-    else:
-        row_copy["truncated"] = False
+        return row_copy
+
+    row_copy["truncated"] = False
 
     string_ids = row_copy.get("stringIds")
     if isinstance(string_ids, list) and protein_count > identifier_cutoff:
