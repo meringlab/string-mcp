@@ -1338,7 +1338,11 @@ async def string_proteins_for_term(
             "for each species and then compare the results. "
             "Default is 9606 (human). Examples: 10090 for mouse, or STRG0AXXXXX for uploaded genomes."
         ))
-    ] = "9606"
+    ] = "9606",
+    detail_for_term: Annotated[
+        Optional[str],
+        Field(description="Optional. Exact term ID to return as one full protein-name list.")
+    ] = None,
 ) -> dict:
     """
     Retrieve proteins annotated with a functional term or descriptive text in a single species.  
@@ -1358,8 +1362,10 @@ async def string_proteins_for_term(
       - term: Exact identifier for the functional term.
       - description: The free text description of the term.
       - proteinCount: Number of proteins annotated with that term
-      - preferredNames: List of human-readable protein names (truncated to first 100)
-      - stringIds: List of STRING protein identifiers (truncated to first 100)
+      - preferredNames: List of human-readable protein names when returned
+      - stringIds: STRING protein identifiers when returned
+      - preferredNames_omitted: True when a row omits a large protein-name list
+      - stringIds_omitted: True when STRING identifiers are omitted
 
     """
     params = {"term_text": term_text, "species": species}
@@ -1369,7 +1375,9 @@ async def string_proteins_for_term(
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
         if 'error' in results: return results 
-        results_truncated, truncation_notes = truncate_functional_terms(results, 'json')
+        results_truncated, truncation_notes = truncate_functional_terms(
+            results, 'json', detail_for_term
+        )
         log_response_size(results_truncated)
         return {"notes": truncation_notes, "results": results_truncated}
 
@@ -1771,12 +1779,12 @@ def _build_enrichment_category_metadata(rows, selected_rows):
 
 
 def truncate_enrichment(data, is_json, expand_category=None):
-    overview_term_cutoff = 300
+    default_term_cutoff = 300
     expanded_term_cutoff = 300
-    overview_gene_cutoff = 11
+    default_gene_cutoff = 11
     expanded_gene_cutoff = 20
     low_priority_categories = {"pmid", "networkneighboral", "keyword"}
-    low_priority_overview_cutoff = 5
+    low_priority_category_cutoff = 5
     truncation_notes = []
     metadata = {}
 
@@ -1820,10 +1828,10 @@ def truncate_enrichment(data, is_json, expand_category=None):
                     f"No enrichment terms matched category `{requested_category}`."
                 )
     else:
-        gene_cutoff = overview_gene_cutoff
+        gene_cutoff = default_gene_cutoff
         selected_rows = rows
 
-        if original_rows > overview_term_cutoff:
+        if original_rows > default_term_cutoff:
             low_priority_counts = defaultdict(int)
             category_limited_rows = []
             capped_low_priority = set()
@@ -1832,24 +1840,24 @@ def truncate_enrichment(data, is_json, expand_category=None):
                 category_key = _enrichment_category_key(row.get("category"))
                 if category_key in low_priority_categories:
                     low_priority_counts[category_key] += 1
-                    if low_priority_counts[category_key] > low_priority_overview_cutoff:
+                    if low_priority_counts[category_key] > low_priority_category_cutoff:
                         capped_low_priority.add(category_key)
                         continue
                 category_limited_rows.append(row)
 
             if capped_low_priority:
                 truncation_notes.append(
-                    f"Enrichment results exceeded {overview_term_cutoff} terms, so PMID/reference publications, local network clusters, and keywords were limited to the first {low_priority_overview_cutoff} terms each."
+                    f"Enrichment results exceeded {default_term_cutoff} terms, so PMID/reference publications, local network clusters, and keywords were limited to the first {low_priority_category_cutoff} terms each."
                 )
 
-            if len(category_limited_rows) > overview_term_cutoff:
-                selected_rows = _select_category_aware_rows(category_limited_rows, overview_term_cutoff)
+            if len(category_limited_rows) > default_term_cutoff:
+                selected_rows = _select_category_aware_rows(category_limited_rows, default_term_cutoff)
             else:
                 selected_rows = category_limited_rows
 
         if len(selected_rows) < original_rows:
             truncation_notes.append(
-                f"Enrichment results were truncated to {len(selected_rows)} of {original_rows} terms under a {overview_term_cutoff}-term global cap. Use `expand_category` with a category name to return that category with expanded term coverage."
+                f"Enrichment results were truncated to {len(selected_rows)} of {original_rows} terms under a {default_term_cutoff}-term global cap. Use `expand_category` with a category name to return that category with expanded term coverage."
             )
 
     category_summary, truncated_categories, omitted_categories = _build_enrichment_category_metadata(
@@ -2457,50 +2465,103 @@ def sort_and_truncate_functional_annotation(data, is_json, detail_for_term=None)
 
     return data, truncation_notes
  
-def truncate_functional_terms(data, is_json):
+def truncate_functional_terms(data, is_json, detail_for_term=None):
     term_size_cutoff = 10
-    protein_size_cutoff_top = 100    # cap for top terms
-    protein_size_cutoff_rest = 25    # cap for later terms
+    protein_name_cutoff = 25
+    identifier_cutoff = 25
     truncation_notes = []
 
     if is_json.lower() == 'json':
-        filtered_data = []
         original_rows = len(data)
 
-        for i, row in enumerate(data[:term_size_cutoff]):
-            if i < 3:
-                # top terms: allow up to 500
-                if len(row['preferredNames']) > protein_size_cutoff_top:
-                    original_protein_count = len(row['preferredNames'])
-                    row['preferredNames'] = row['preferredNames'][:protein_size_cutoff_top] + ["..."]
-                    row['stringIds'] = row['stringIds'][:protein_size_cutoff_top] + ["..."]
-                    row['proteinCount'] = original_protein_count
-                    row['truncated'] = True
-                else:
-                    row['proteinCount'] = len(row['preferredNames'])
-                    row['truncated'] = False
-            else:
-                # later terms: allow only 50
-                if len(row['preferredNames']) > protein_size_cutoff_rest:
-                    original_protein_count = len(row['preferredNames'])
-                    row['preferredNames'] = row['preferredNames'][:protein_size_cutoff_rest] + ["..."]
-                    row['stringIds'] = row['stringIds'][:protein_size_cutoff_rest] + ["..."]
-                    row['proteinCount'] = original_protein_count
-                    row['truncated'] = True
-                else:
-                    row['proteinCount'] = len(row['preferredNames'])
-                    row['truncated'] = False
+        if detail_for_term:
+            detail_key = detail_for_term.strip().lower()
+            matching_rows = [
+                row for row in data
+                if str(row.get("term", "")).strip().lower() == detail_key
+            ]
+            if not matching_rows:
+                truncation_notes.append(
+                    "No matching term was found. "
+                    "Run without `detail_for_term` to inspect exact term IDs."
+                )
+                return [], truncation_notes
 
-            filtered_data.append(row)
+            detail_row = _prepare_functional_term_row(
+                matching_rows[0],
+                protein_name_cutoff=protein_name_cutoff,
+                identifier_cutoff=identifier_cutoff,
+                omit_large_protein_lists=False,
+            )
+            if detail_row.get("stringIds_omitted", False):
+                truncation_notes.append(
+                    f"STRING identifiers are omitted for protein lists above {identifier_cutoff} proteins."
+                )
+
+            return [detail_row], truncation_notes
+
+        filtered_data = []
+        omitted_protein_lists = False
+        omitted_identifiers = False
+
+        for row in data[:term_size_cutoff]:
+            row_copy = _prepare_functional_term_row(
+                row,
+                protein_name_cutoff=protein_name_cutoff,
+                identifier_cutoff=identifier_cutoff,
+                omit_large_protein_lists=True,
+            )
+            omitted_protein_lists = (
+                omitted_protein_lists or row_copy.get("preferredNames_omitted", False)
+            )
+            omitted_identifiers = (
+                omitted_identifiers or row_copy.get("stringIds_omitted", False)
+            )
+
+            filtered_data.append(row_copy)
 
         if len(filtered_data) < original_rows:
             truncation_notes.append(
                 f"Functional-term results were truncated to the top {term_size_cutoff} terms for readability."
             )
+        if omitted_protein_lists:
+            truncation_notes.append(
+                f"Protein-name lists above {protein_name_cutoff} proteins are omitted "
+                "and are unavailable for membership checks."
+            )
+        if omitted_identifiers:
+            truncation_notes.append(
+                f"STRING identifiers are omitted for protein lists above {identifier_cutoff} proteins."
+            )
 
         data = filtered_data
 
     return data, truncation_notes
+
+
+def _prepare_functional_term_row(row, protein_name_cutoff, identifier_cutoff, omit_large_protein_lists):
+    row_copy = dict(row)
+    preferred_names = row_copy.get("preferredNames")
+
+    if not isinstance(preferred_names, list):
+        return row_copy
+
+    protein_count = len(preferred_names)
+    row_copy["proteinCount"] = protein_count
+
+    if omit_large_protein_lists and protein_count > protein_name_cutoff:
+        row_copy.pop("preferredNames", None)
+        row_copy["preferredNames_omitted"] = True
+        row_copy["truncated"] = True
+    else:
+        row_copy["truncated"] = False
+
+    string_ids = row_copy.get("stringIds")
+    if isinstance(string_ids, list) and protein_count > identifier_cutoff:
+        row_copy.pop("stringIds", None)
+        row_copy["stringIds_omitted"] = True
+
+    return row_copy
 
 def log_response_size(resp):
     if log_verbosity['size']:
