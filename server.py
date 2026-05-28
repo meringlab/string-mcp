@@ -222,6 +222,16 @@ async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
         ping_task.cancel()
 
 
+def _rewrite_image_url_against_url_elision(image_url):
+    if isinstance(image_url, list):
+        return [_rewrite_image_url_against_url_elision(url) for url in image_url]
+
+    if not isinstance(image_url, str):
+        return image_url
+
+    return image_url.replace("/images/userimages/", "/userdata/")
+
+
 mcp = FastMCP(
     name="STRING Database MCP Server",
 )
@@ -644,6 +654,7 @@ async def string_visual_network(
 
  
         log_response_size(results)
+        results = _rewrite_image_url_against_url_elision(results)
 
         return {"notes": notes, "image_url": results}
 
@@ -798,7 +809,7 @@ async def string_network_clustering(
 
         image_url = None
         if results and isinstance(results, list) and "imageURL" in results[0]:
-            image_url = results[0].get("imageURL")
+            image_url = _rewrite_image_url_against_url_elision(results[0].get("imageURL"))
             for cluster in results:
                 cluster.pop("imageURL", None)
         
@@ -1266,6 +1277,8 @@ async def string_enrichment_image_url(
             "If no valid URL is returned, do not embed or display any link."
         )
  
+
+        results = _rewrite_image_url_against_url_elision(results)
 
         return {"notes": notes, "results": results}
 
