@@ -333,6 +333,7 @@ async def string_interactions_query_set(
     - For a **single protein**, the network includes that protein and its top 10 most likely interaction partners, plus all interactions among those partners.
     - For **multiple proteins**, the network includes all direct interactions between them.
     - If the user refers to "physical interactions", "complexes", or "binding", set the network type to "physical".
+    - STRING does not store or report information about self-interactions/homomers; if asked, explain the limitation.
     
     If few or no interactions are returned, consider reducing the `required_score`.
     
