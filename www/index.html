@@ -74,6 +74,23 @@
       margin: 0.5rem 0;
     }
 
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0 1.5rem;
+    }
+
+    th, td {
+      padding: 0.65rem 0.75rem;
+      border: 1px solid color-mix(in srgb, CanvasText 18%, Canvas);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: color-mix(in srgb, CanvasText 6%, Canvas);
+    }
+
     .box {
       border: 1px solid color-mix(in srgb, CanvasText 20%, Canvas);
       border-radius: 10px;
@@ -103,12 +120,16 @@
     </p>
   </div>
 
-  <h2>What is MCP?</h2>
+  <h2>What is STRING MCP?</h2>
 
   <p>
-    MCP, the Model Context Protocol, is a standard way for AI applications to connect to external tools and data sources.
-    The STRING MCP server lets an AI agent access STRING data, for example to resolve protein identifiers, retrieve interaction networks,
-    inspect evidence, run enrichment analysis, look up homologs, or query proteins by biological function or disease association.
+    STRING MCP connects AI agents to STRING data through the Model Context Protocol (MCP).
+  </p>
+
+  <p>
+    The server is designed for agent use.
+    Responses are structured for reliable model interpretation, with adaptive trimming that keeps the most relevant data for grounding and token efficiency.
+    In addition, the server attaches response metadata hints to help models understand returned results and choose useful follow-up queries.
   </p>
 
   <h2>How to use the remote server</h2>
@@ -180,12 +201,108 @@ cd string-mcp
 pip install -r requirements.txt
 python server.py</code></pre>
 
+  <h2>License / Citation</h2>
+
+  <p>
+    Data accessed through this remote endpoint is available under the
+    <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0 License</a>.
+    It is free to use without restrictions for commercial and non-commercial purposes.
+  </p>
+
+  <p>
+    Publications, workflows, and other outputs using STRING data or this remote endpoint must acknowledge STRING and cite the latest
+    <a href="https://string-db.org/cgi/about?footer_active_subpage=references">STRING manuscript</a>.
+  </p>
+
   <h2>API</h2>
 
   <p>
     For non-agentic programmatic access to STRING, use the regular
     <a href="https://string-db.org/cgi/help?subpage=api">STRING API</a> instead.
   </p>
+
+  <h2>Available tools</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Tool</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>string_resolve_proteins</code></td>
+        <td>Resolve protein identifiers to STRING metadata.</td>
+      </tr>
+      <tr>
+        <td><code>string_interactions_query_set</code></td>
+        <td>Retrieve interactions within a query protein set.</td>
+      </tr>
+      <tr>
+        <td><code>string_all_interaction_partners</code></td>
+        <td>Find interaction partners for one or more proteins.</td>
+      </tr>
+      <tr>
+        <td><code>string_visual_network</code></td>
+        <td>Generate a STRING network image URL.</td>
+      </tr>
+      <tr>
+        <td><code>string_network_clustering</code></td>
+        <td>Cluster a STRING interaction network.</td>
+      </tr>
+      <tr>
+        <td><code>string_network_link</code></td>
+        <td>Create an interactive STRING network link.</td>
+      </tr>
+      <tr>
+        <td><code>string_homology</code></td>
+        <td>Find homologs in selected species or clades.</td>
+      </tr>
+      <tr>
+        <td><code>string_interaction_evidence</code></td>
+        <td>Link to STRING evidence pages for protein pairs.</td>
+      </tr>
+      <tr>
+        <td><code>string_enrichment</code></td>
+        <td>Run functional enrichment analysis.</td>
+      </tr>
+      <tr>
+        <td><code>string_functional_annotation</code></td>
+        <td>Retrieve curated functional annotations.</td>
+      </tr>
+      <tr>
+        <td><code>string_enrichment_image_url</code></td>
+        <td>Generate an enrichment figure image URL.</td>
+      </tr>
+      <tr>
+        <td><code>string_ppi_enrichment</code></td>
+        <td>Test whether a protein set is enriched for interactions.</td>
+      </tr>
+      <tr>
+        <td><code>string_proteins_for_term</code></td>
+        <td>Find proteins associated with a function, pathway, disease, tissue, or compartment.</td>
+      </tr>
+      <tr>
+        <td><code>string_sequence_search</code></td>
+        <td>Search STRING proteins by amino acid sequence.</td>
+      </tr>
+      <tr>
+        <td><code>string_query_species</code></td>
+        <td>Search species and clades available in STRING.</td>
+      </tr>
+      <tr>
+        <td><code>string_create_file</code></td>
+        <td>Create a downloadable STRING result file.</td>
+      </tr>
+      <tr>
+        <td><code>string_help</code></td>
+        <td>Return STRING-specific help topics and limitations.</td>
+      </tr>
+    </tbody>
+  </table>
+
+
 
 </body>
 </html>
