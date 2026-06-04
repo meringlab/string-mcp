@@ -1517,8 +1517,8 @@ async def string_create_file(
         str,
         Field(
             description=(
-                "Required. Suggested output filename, including a safe extension such as .txt, .tsv, .csv, .json, or .md. "
-                "Match the content format to the extension; prefer .tsv for tabular data. "
+                "Required. Suggested output filename with a safe extension such as .tsv, .csv, .json, .md, or .txt. "
+                "Match content to the extension; prefer .tsv for reusable tabular STRING data. "
                 "Use a concise name that reflects the STRING analysis result, for example string-enrichment.tsv."
             )
         )
@@ -1527,9 +1527,10 @@ async def string_create_file(
         str,
         Field(
             description=(
-                "Required. File content generated from STRING data or STRING analysis results. "
-                "For .csv/.tsv, provide one rectangular table with one header row; "
-                "put notes/caveats in the chat answer, or use .md/.txt for narrative output."
+                "Required STRING-derived file content. For .tsv/.csv: one rectangular table, one header row, "
+                "matching delimiter, no Markdown/prose/repeated headers/multiple tables. "
+                "Use one row per entity, edge, cluster member, annotation, or enrichment term. "
+                "Use bare numeric scores/FDR/p-values; put interpretation and caveats in chat or .md/.txt."
             )
         )
     ],
