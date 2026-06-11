@@ -12,19 +12,7 @@ For a live demonstration of MCP capabilities, see [STRING Chat](https://string-d
 
 For reproducible workflows and large-scale integration, use the [STRING API](https://string-db.org/cgi/help?subpage=api).
 
-## Agent Skill
-
-This repository includes an optional Agent Skill for using STRING MCP tools in agentic workflows:
-
-```text
-skills/string-database/SKILL.md
-```
-
-The skill provides instructions for STRING network and enrichment analysis workflows, including protein identifier resolution, interaction networks, interaction partners, evidence links, functional annotations, homolog lookup, sequence search, and species lookup.
-
-It provides workflow guidance for agents that already have access to the STRING MCP tools.
-
----
+For agentic STRING workflows, use the optional Agent Skill at `skills/string-database/SKILL.md`.
 
 ## Features
 
