@@ -37,12 +37,51 @@ import asyncio
 import traceback
 
 from collections import defaultdict
-from typing import Annotated, Optional
+from enum import Enum
+from typing import Annotated, Literal, Optional
 
 from pydantic import Field
 from fastmcp import FastMCP
 
 from string_help import HELP_TOPICS
+
+BinaryFlag = Literal[0, 1]
+NetworkType = Literal["functional", "physical"]
+NetworkFlavor = Literal["evidence", "confidence"]
+ClusteringAlgorithm = Literal["MCL", "kmeans"]
+EnrichmentImageCategory = Literal[
+    "Process",
+    "Function",
+    "Component",
+    "Keyword",
+    "KEGG",
+    "RCTM",
+    "HPO",
+    "MPO",
+    "DPO",
+    "WPO",
+    "ZPO",
+    "FYPO",
+    "Pfam",
+    "SMART",
+    "InterPro",
+    "PMID",
+    "NetworkNeighborAL",
+    "COMPARTMENTS",
+    "TISSUES",
+    "DISEASES",
+    "WikiPathways",
+]
+EnrichmentImageXAxis = Literal["signal", "strength", "FDR", "gene_count"]
+EnrichmentImageColorPalette = Literal[
+    "mint_blue",
+    "lime_emerald",
+    "green_blue",
+    "peach_purple",
+    "straw_navy",
+    "yellow_pink",
+]
+HelpTopic = Enum("HelpTopic", {topic: topic for topic in HELP_TOPICS}, type=str)
 
 try:
     with open("config/server.config") as f:
@@ -247,10 +286,10 @@ async def string_resolve_proteins(
         )
     ] = None,
     show_sequence: Annotated[
-        str,
+        Optional[Literal["0", "1"]],
         Field(
             description=(
-                "Optional. '1' to include sequences (default '0'). Use only if the user requests sequence data."
+                "Optional. Include sequences when set to 1. Use only if the user requests sequence data."
             )
         )
     ] = None
@@ -298,30 +337,34 @@ async def string_interactions_query_set(
     ] = None,
     required_score: Annotated[
         Optional[int],
-        Field(description=(
-            "Optional. Minimum confidence score for an interaction (range: 0–1000). "
-            "Only set this if the user explicitly requests it."
-        ))
+        Field(
+            description="Optional. Minimum confidence score for an interaction. Omit unless a confidence threshold is requested or a broader/narrower threshold is needed.",
+            ge=0,
+            le=1000,
+        )
     ] = None,
     network_type: Annotated[
-        Optional[str],
+        Optional[NetworkType],
         Field(description=(
-            'Optional. Network type: "functional" (default) or "physical" (co-complex).'
+            "Optional. Omit for STRING default functional associations. Set physical only for binding, complex, or co-complex questions."
         ))
     ] = None,
     extend_network: Annotated[
         Optional[int],
-        Field(description=(
-            "Optional. Number of additional proteins to add to the network based on their "
-            "connectivity. Default is 10 for a single protein query and 0 for multiple proteins. "
-            "Only set this if the user explicitly requests it."
-        ))
+        Field(
+            description=(
+                "Optional. Number of additional proteins to add to the network based on their "
+                "connectivity. Default is 10 for a single protein query and 0 for multiple proteins. "
+                "Set only if the user asks to add, extend, include a neighborhood, or show connecting proteins."
+            ),
+            ge=0,
+        )
     ] = None,
     #show_query_node_labels: Annotated[
-    #    Optional[int],
+    #    Optional[BinaryFlag],
     #    Field(description=(
     #        "Optional. Set to 1 to display user-supplied names instead of STRING preferred names "
-    #        "in the output. Default is 0. Only set if the user explicitly requests it."
+    #        "in the output. Default is 0. Set only if the user asks for query labels."
     #    ))
     #] = None
 ) -> dict:
@@ -464,20 +507,21 @@ async def string_all_interaction_partners(
         str,
         Field(description=(
             "Optional. NCBI taxonomy ID (e.g. 9606 for human) or STRING genome ID "
-            "(e.g. STRG0AXXXXX for uploaded genomes). Only set if the user explicitly requests it."
+            "(e.g. STRG0AXXXXX for uploaded genomes). Only set when required."
         ))
     ] = None,
     required_score: Annotated[
         Optional[int],
-        Field(description=(
-            "Optional. Minimum interaction score to include (range: 0–1000). "
-            "Only set if the user explicitly requests it."
-        ))
+        Field(
+            description="Optional. Minimum interaction score to include. Omit unless a confidence threshold is requested or a broader/narrower threshold is needed.",
+            ge=0,
+            le=1000,
+        )
     ] = None,
     network_type: Annotated[
-        Optional[str],
+        Optional[NetworkType],
         Field(description=(
-            'Optional. Network type: "functional" (default) or "physical" (co-complex).'
+            "Optional. Omit for STRING default functional associations. Set physical only for binding, complex, or co-complex questions."
         ))
     ] = None
 ) -> dict:
@@ -561,40 +605,47 @@ async def string_visual_network(
     ] = None,
     extend_network: Annotated[
         Optional[int],
-        Field(description="Optional. Add specified number of nodes to the network, based on their scores (default: 0, or 10 for single protein queries).")
+        Field(
+            description="Optional. Add specified number of nodes to the network, based on their scores. Default: 0, or 10 for single protein queries.",
+            ge=0,
+        )
     ] = None,
     required_score: Annotated[
         Optional[int],
-        Field(description="Optional. Threshold of significance to include an interaction (0-1000). Default: 400. Increase for large queries to 700.")
+        Field(
+            description="Optional. Threshold of significance to include an interaction. Omit for STRING default filtering. Set only when a threshold is requested or a broader/narrower threshold is needed.",
+            ge=0,
+            le=1000,
+        )
     ] = None,
     network_type: Annotated[
-        Optional[str],
-        Field(description='Optional. Network type: "functional" (default) or "physical" (co-complex).')
+        Optional[NetworkType],
+        Field(description="Optional. Omit for STRING default functional associations. Set physical only for binding, complex, or co-complex questions.")
     ] = None,
     network_flavor: Annotated[
-        Optional[str],
-        Field(description='Optional. Edge style: "evidence" (default), "confidence" (recommended for large queries, e.g. >100 proteins), or "actions".')
+        Optional[NetworkFlavor],
+        Field(description="Optional. Edge style. Omit for STRING default evidence styling. Set only when the user asks for evidence or confidence edge display.")
     ] = None,
     hide_disconnected_nodes: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 to hide proteins not connected to any other protein, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
+        Optional[BinaryFlag],
+        Field(description="Optional. Hide proteins not connected to any other protein when set to 1. Set only if the user asks to hide disconnected or unconnected proteins.")
     ] = None,
     #show_query_node_labels: Annotated[
-    #    Optional[int],
-    #    Field(description="Optional. 1 display the user's query name(s) instead of STRING preferred name, (default: 0). DO NOT SET unless user explicitly requests.")
+    #    Optional[BinaryFlag],
+    #    Field(description="Optional. Display the user's query name instead of the STRING preferred name when set to 1. Set only if the user asks for query labels.")
     #] = None,
     center_node_labels: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 to center protein names on nodes, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
+        Optional[BinaryFlag],
+        Field(description="Optional. Center protein names on nodes when set to 1. Set only if the user asks to center labels.")
     ] = None,
     do_not_show_structures: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 remove small protein structure previews from inside the node bubbles. DO NOT SET unless user explicitly requests.")
+        Optional[BinaryFlag],
+        Field(description="Optional. Remove small protein structure previews from inside the node bubbles when set to 1. Set only if the user asks to remove or hide structure previews.")
     ] = None,
  
     #custom_label_font_size: Annotated[
     #    Optional[int],
-    #    Field(description="Optional. Change font size of protein names (from 5 to 50, default: 12). DO NOT SET unless user explicitly requests.")
+    #    Field(description="Optional. Change font size of protein names. Default: 12. Set only if the user asks to change label size.", ge=5, le=50)
     #] = None
 ) -> dict:
     """
@@ -712,44 +763,52 @@ async def string_network_clustering(
     ] = None,
     extend_network: Annotated[
         Optional[int],
-        Field(description="Optional. Add specified number of additional nodes to the network based on their interaction scores (default: 0, or 10 for single-protein queries).")
+        Field(
+            description="Optional. Add specified number of additional nodes to the network based on their interaction scores. Default: 0, or 10 for single-protein queries.",
+            ge=0,
+        )
     ] = None,
     required_score: Annotated[
         Optional[int],
-        Field(description="Optional. Minimum interaction confidence score (0–1000). Lower values show more edges. Default: 400.")
+        Field(
+            description="Optional. Minimum interaction confidence score. Omit for STRING default filtering. Set only when a threshold is requested or a broader/narrower threshold is needed.",
+            ge=0,
+            le=1000,
+        )
     ] = None,
     network_type: Annotated[
-        Optional[str],
-        Field(description='Optional. Network type: "functional" (default) or "physical" (co-complex).')
+        Optional[NetworkType],
+        Field(description="Optional. Omit for STRING default functional associations. Set physical only for binding, complex, or co-complex questions.")
     ] = None,
     clustering_algorithm: Annotated[
-        Optional[str],
+        Optional[ClusteringAlgorithm],
         Field(description=(
-            "Optional. Clustering algorithm: 'MCL' or 'kmeans'.\n"
-            "- 'MCL' (Markov Cluster Algorithm) identifies densely connected subnetworks based on connectivity flow; "
-            "- 'kmeans' partitions proteins into a fixed number of clusters, useful when explicit cluster counts are desired; "
+            "Optional. MCL identifies densely connected subnetworks based on connectivity flow. "
+            "kmeans partitions proteins into a fixed number of clusters. If omitted, the server uses MCL."
        ))
     ] = None,
     
     clustering_parameter: Annotated[
         Optional[float],
-        Field(description=(
-            "Optional. Controls the clustering granularity:\n"
-            "- For 'MCL': inflation parameter (1.0–10.0, default 3.0); higher values produce more, smaller clusters.\n"
-            "- For 'kmeans': number of clusters (integer ≥2, default 3).\n"
-        ))
+        Field(
+            description=(
+                "Optional. Controls clustering granularity. For MCL: inflation parameter 1.0-10.0, default 3.0; "
+                "higher values produce more, smaller clusters. For kmeans: number of clusters, integer >=2, default 3."
+            ),
+            ge=1,
+        )
     ] = None,
     network_flavor: Annotated[
-        Optional[str],
-        Field(description='Optional. Edge display style: "evidence" (default), "confidence", or "actions".')
+        Optional[NetworkFlavor],
+        Field(description="Optional. Edge display style. Omit for STRING default evidence styling. Set only when the user asks for evidence or confidence edge display.")
     ] = None,
     hide_disconnected_nodes: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 to hide unconnected nodes, 0 otherwise (default: 0). Use only if user explicitly requests it.")
+        Optional[BinaryFlag],
+        Field(description="Optional. Hide unconnected nodes when set to 1. Set only if the user asks to hide disconnected or unconnected proteins.")
     ] = None,
     center_node_labels: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 to center protein labels on nodes, 0 otherwise (default: 0). Use only if user explicitly requests it.")
+        Optional[BinaryFlag],
+        Field(description="Optional. Center protein labels on nodes when set to 1. Set only if the user asks to center labels.")
     ] = None,
 ) -> dict:
     """
@@ -876,27 +935,27 @@ async def string_network_link(
     ] = None,
     extend_network: Annotated[
         Optional[int],
-        Field(description="Optional. Add white nodes to network, based on scores (default: 0).")
+        Field(description="Optional. Add white nodes to network, based on scores. Default: 0.", ge=0)
     ] = None,
     required_score: Annotated[
         Optional[int],
-        Field(description="Optional. Threshold of significance to include an interaction (0-1000).")
+        Field(description="Optional. Threshold of significance to include an interaction. Omit for STRING default filtering. Set only when a threshold is requested or a broader/narrower threshold is needed.", ge=0, le=1000)
     ] = None,
     network_flavor: Annotated[
-        Optional[str],
-        Field(description='Optional. Edge style: "evidence" (default) or "confidence".')
+        Optional[NetworkFlavor],
+        Field(description="Optional. Edge style. Omit for STRING default evidence styling. Set only when the user asks for evidence or confidence edge display.")
     ] = None,
     network_type: Annotated[
-        Optional[str],
-        Field(description='Optional. Network type: "functional" (default) or "physical" (co-complex).')
+        Optional[NetworkType],
+        Field(description="Optional. Omit for STRING default functional associations. Set physical only for binding, complex, or co-complex questions.")
     ] = None,
     hide_disconnected_nodes: Annotated[
-        Optional[int],
-        Field(description="Optional. 1 to hide proteins not connected to any other protein, 0 otherwise (default: 0). DO NOT SET unless user explicitly requests.")
+        Optional[BinaryFlag],
+        Field(description="Optional. Hide proteins not connected to any other protein when set to 1. Set only if the user asks to hide disconnected or unconnected proteins.")
     ] = None,
     #show_query_node_labels: Annotated[
-    #    Optional[int],
-    #    Field(description="Optional. 1 display the user's query name(s) instead of STRING preferred name, (default: 0). DO NOT SET unless user explicitly requests.")
+    #    Optional[BinaryFlag],
+    #    Field(description="Optional. Display the user's query name instead of the STRING preferred name when set to 1. Set only if the user asks for query labels.")
     #] = None,
 ) -> dict:
     """Retrieves a stable URL to an interactive STRING network for one or more proteins.
@@ -1091,7 +1150,7 @@ async def string_enrichment(
     ],
     species: Annotated[
         Optional[str],
-        Field(description="Optional. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX). DO NOT SET unless user explicitly requests.")
+        Field(description="Optional. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX). Use only when required.")
     ] = None,
     expand_category: Annotated[
         Optional[str],
@@ -1234,57 +1293,32 @@ async def string_enrichment_image_url(
         Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX).")
     ] = None,
     category: Annotated[
-        Optional[str],
+        Optional[EnrichmentImageCategory],
         Field(
             description=(
-                "Optional. Term category for enrichment. "
-                "Valid options: "
-                "'Process' (GO Biological Process), "
-                "'Function' (GO Molecular Function), "
-                "'Component' (GO Cellular Component), "
-                "'Keyword' (UniProt Keywords), "
-                "'KEGG' (KEGG Pathways), "
-                "'RCTM' (Reactome Pathways), "
-                "'HPO' (Human Phenotype, Monarch), "
-                "'MPO' (Mammalian Phenotype Ontology), "
-                "'DPO' (Drosophila Phenotype Ontology), "
-                "'WPO' (C. elegans Phenotype Ontology), "
-                "'ZPO' (Zebrafish Phenotype Ontology), "
-                "'FYPO' (Fission Yeast Phenotype Ontology), "
-                "'Pfam' (Pfam domains), "
-                "'SMART' (SMART domains), "
-                "'InterPro' (InterPro domains/features), "
-                "'PMID' (PubMed references), "
-                "'NetworkNeighborAL' (Local Network Cluster), "
-                "'COMPARTMENTS' (Subcellular Localization), "
-                "'TISSUES' (Tissue Expression), "
-                "'DISEASES' (Disease-gene Associations), "
-                "'WikiPathways' (WikiPathways). "
-                "Default: 'Process' (GO Biological Process)."
+                "Optional. Term category for enrichment. If omitted, STRING uses Process. "
+                "Use Process/Function/Component for GO, KEGG for KEGG pathways, RCTM for Reactome, and PMID for publications."
             )
         )
     ] = None,
     group_by_similarity: Annotated[
         Optional[float],
-        Field(description="Optional. Group similar terms on the plot; threshold 0.1-1 (default: no grouping).")
+        Field(description="Optional. Group similar terms on the plot. Default: no grouping.", ge=0.1, le=1)
     ] = None,
     color_palette: Annotated[
-        Optional[str],
-        Field(description='Optional. Color palette for FDR (e.g., "mint_blue", "lime_emerald", etc.; default: "mint_blue").')
+        Optional[EnrichmentImageColorPalette],
+        Field(description="Optional. Color palette for FDR. If omitted, STRING uses mint_blue.")
     ] = None,
-    number_of_term_shown: Annotated[
+    number_of_terms_shown: Annotated[
         Optional[int],
-        Field(description="Optional. Max number of terms shown on plot (default: 10).")
+        Field(description="Optional. Max number of terms shown on plot. Default: 10.", ge=1)
     ] = None,
     x_axis: Annotated[
-        Optional[str],
-        Field(description='Optional. X-axis variable/order: "signal", "strength", "FDR", or "gene_count" (default: "signal").')
+        Optional[EnrichmentImageXAxis],
+        Field(description="Optional. X-axis variable/order. If omitted, STRING uses signal.")
     ] = None
 ) -> dict:
     """Retrieves the STRING enrichment figure image *URL* for a set of proteins.
-
-
-    See the `category` parameter for a list of valid category options.
     """
     params = {"identifiers": identifiers}
     if species is not None:
@@ -1295,8 +1329,8 @@ async def string_enrichment_image_url(
         params["group_by_similarity"] = group_by_similarity
     if color_palette is not None:
         params["color_palette"] = color_palette
-    if number_of_term_shown is not None:
-        params["number_of_term_shown"] = number_of_term_shown
+    if number_of_terms_shown is not None:
+        params["number_of_term_shown"] = number_of_terms_shown
     if x_axis is not None:
         params["x_axis"] = x_axis
 
@@ -1329,7 +1363,11 @@ async def string_ppi_enrichment(
     ] = None,
     required_score: Annotated[
         Optional[int],
-        Field(description="Optional. Minimum interaction confidence score (0-1000). DO NOT SET unless user explicitly requests.")
+        Field(
+            description="Optional. Minimum interaction confidence score. Omit unless a confidence threshold is requested or a broader/narrower threshold is needed.",
+            ge=0,
+            le=1000,
+        )
     ] = None,
 ) -> dict:
     """
@@ -1651,16 +1689,13 @@ async def string_create_file(
 @mcp.tool(title="STRING: Help / FAQ")
 async def string_help(
     topic: Annotated[
-        str,
+        Optional[HelpTopic],
         Field(
             description=(
-                "Help topic to display. Choose one of:\n"
-                "  how_to_use_string, gsea, large_input, cytoscape, scores,\n"
-                "  missing_proteins, missing_species, proteome_annotation,\n"
-                "  regulatory_networks, line_colors, version_and_citation\n\n"
+                "Optional. Help topic to display. If omitted, returns the available topics."
             )
         )
-    ],
+    ] = None,
  ) -> dict:
     """
     Provides explanatory text for STRING features and limitations.
