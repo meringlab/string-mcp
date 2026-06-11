@@ -386,8 +386,43 @@ async def string_interactions_query_set(
         if add_score_note:
             notes.append("The required_score parameter was lowered to 0 - showing all interactions. "
                          "IMPORTANT: If the interaction score is low (below 400), inform user about it.")
+
+        network_summary = formatted_network["network_summary"]
+        edge_count = network_summary.get("edges_above_cutoff", 0)
+        effective_required_score = network_summary.get("required_score", 0)
         if not len(formatted_network["network"]):
-             notes.append(f"No interactions found in STRING database at that {required_score} cut-off.")
+             notes.append(f"No interactions found in STRING database at that {effective_required_score} cut-off.")
+
+        protein_count = len([
+            protein
+            for protein in proteins.replace("%0D", "%0d").split("%0d")
+            if protein.strip()
+        ])
+        if (
+            protein_count
+            and edge_count < protein_count / 2
+            and effective_required_score > LOW_CONFIDENCE_REQUIRED_SCORE
+        ):
+            notes.append(
+                "Few interactions were found at the current confidence threshold (`required_score`). "
+                "To see more potential interactions, suggest lowering `required_score`."
+            )
+
+        requested_extension = params.get("add_white_nodes", 0)
+        actual_added_protein_count = max(
+            0,
+            network_summary.get("nodes_with_interactions", 0) - protein_count,
+        )
+        if (
+            requested_extension
+            and actual_added_protein_count < requested_extension
+            and effective_required_score > LOW_CONFIDENCE_REQUIRED_SCORE
+        ):
+            notes.append(
+                "Network expansion returned fewer additional proteins than requested at the current "
+                "confidence threshold (`required_score`). To see more potential connecting proteins, "
+                "suggest lowering `required_score`."
+            )
 
         notes.extend(formatted_network["notes"])
      
@@ -487,8 +522,20 @@ async def string_all_interaction_partners(
 
         notes.extend(formatted_interactions["notes"])
 
+        node_summary = formatted_interactions["node_summary"]
+        returned_protein_count = node_summary.get("returned_protein_names", 0)
+        effective_required_score = node_summary.get("required_score", 0)
         if not len(formatted_interactions["interactions"]):
-             notes.append(f"No interactions found in STRING database at that {required_score} cut-off. Consider lowering the required_score.")
+             notes.append(f"No interactions found in STRING database at that {effective_required_score} cut-off. Consider lowering the required_score.")
+
+        if (
+            returned_protein_count < 10
+            and effective_required_score > LOW_CONFIDENCE_REQUIRED_SCORE
+        ):
+            notes.append(
+                "Few proteins were returned at the current confidence threshold (`required_score`). "
+                "To see more potential interaction partners, suggest lowering `required_score`."
+            )
 
         response = {
             "notes": notes,
@@ -2107,6 +2154,7 @@ QUERY_SET_EDGE_SAMPLE_LIMIT = 100
 QUERY_SET_NODE_SUMMARY_LIMIT = 250
 PARTNER_INTERACTION_DETAIL_LIMIT = 500
 PARTNER_UNIQUE_PROTEIN_LIMIT = 2000
+LOW_CONFIDENCE_REQUIRED_SCORE = 150
 
 
 def normalize_score_threshold(input_score_threshold):
