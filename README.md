@@ -12,7 +12,7 @@ For a live demonstration of MCP capabilities, see [STRING Chat](https://string-d
 
 For reproducible workflows and large-scale integration, use the [STRING API](https://string-db.org/cgi/help?subpage=api).
 
-For agentic STRING workflows, use the optional Agent Skill at [skills/string-database/SKILL.md](skills/string-database/SKILL.md).
+For agentic workflows, use the optional agent skill at [skills/string-database/SKILL.md](skills/string-database/SKILL.md).
 
 ## Features
 
@@ -124,6 +124,9 @@ You should see a `200 OK` response with `content-type: text/event-stream`.
    ```
 
 **Note:** The Docker container will use the configuration from `config/server.config`. If this file doesn't exist, the container will copy from `server.config.example` on first run.
+
+
+STRING v12.0 is the frozen network release, available under the `/v12.0/` path.
 
 
 ## License / Citation
