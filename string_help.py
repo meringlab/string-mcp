@@ -38,16 +38,40 @@ HELP_TOPICS = {
         "network page and either send the network directly to Cytoscape or download the short tabular text output."
     ),
     "scores": (
-        "STRING interaction scores range from 0 to 1000 (roughly corresponding to probabilities from 0 to 1). "
-        "Common thresholds: 400 = medium confidence, 700 = high confidence.\n\n"
-        "The combined score integrates evidence from multiple channels (experiments, databases, co-expression, text mining, etc.). "
-        "Each channel is benchmarked and equally weighted; weaker channels naturally give lower scores. It is not recommended to remove channels, "
-        "as this reduces biological signal. Channels also cannot be removed by the agent — only through the STRING web interface (settings tab).\n\n"
-        "The combination uses a Bayesian scheme: a prior is removed from each channel, scores are combined multiplicatively, "
-        "and the prior is added back once. The result is a probability-like confidence score.\n\n"
-        "For details see: von Mering et al., Nucleic Acids Res. 2005.\n\n"
-  
-        "For details about meaning of the lines in the network refer to topic: 'line_colors'."
+        "**What a STRING confidence score means**:\n"
+        "A STRING confidence score is a calibrated, probability-like estimate of support for the stated protein relationship, "
+        "given the available biological evidence. STRING confidence values ordinarily range from 0.150 to 0.999. MCP confidence "
+        "fields use the decimal form, while `required_score` uses the 0–1000 convention: 400 means 0.400 (medium confidence) "
+        "and 700 means 0.700 (high confidence).\n\n"
+
+        "**Functional network confidence**:\n"
+        "The functional combined confidence estimates support that two proteins work together in a shared biological process, "
+        "pathway, or cellular context. It integrates the functional network's evidence channels and captures both direct molecular "
+        "interactions and indirect associations within the same biological system.\n\n"
+
+        "**Physical network confidence**:\n"
+        "The physical combined confidence supports physical proximity, including direct binding or membership in the same "
+        "molecular complex.\n\n"
+
+        "**Regulatory network confidence**:\n"
+        "Regulatory combined confidence summarizes pair-level support for a regulatory relationship. Directional confidence "
+        "supports the stated source-to-target relationship. "
+        "For regulatory queries, `required_score` filters by regulatory combined confidence, not directional confidence. "
+        "A positive, negative, or unknown sign characterizes the effect of that direction independently of confidence.\n\n"
+
+        "**Evidence and combined confidence**:\n"
+        "Individual evidence-channel scores describe support from a particular source, such as experiments, databases, "
+        "co-expression, genomic context, or text mining. Functional confidence can integrate all seven canonical evidence "
+        "channels; physical confidence uses the evidence that supports physical proximity, including experiments, curated "
+        "databases, and text mining. Channel scores are calibrated to a shared confidence scale, so the same score value has "
+        "the same confidence interpretation across evidence sources. Combined confidence integrates all applicable channels "
+        "for the selected relationship type and is generally the appropriate score for filtering. The combination uses a Bayesian "
+        "scheme: a prior is removed from each channel, scores are combined multiplicatively, and the prior is added back once.\n\n"
+
+        "Use a higher threshold to focus on fewer, more strongly supported relationships; lower it for broader exploratory "
+        "coverage. Keeping all evidence channels active preserves biological signal and is generally recommended over channel "
+        "filtering. MCP cannot enable or disable channels; change them in the STRING web interface Settings tab. For the visual "
+        "meaning of network edges, see the `network_edge_legend` help topic."
     ),
     "missing_proteins": (
         "STRING accepts many identifiers (gene symbols, UniProt, Ensembl). "
@@ -76,10 +100,13 @@ HELP_TOPICS = {
         "or provide species identifiers (starting with `STRG`) to this chat interface for further queries."
     ),
     "regulatory_networks": (
-        "Regulatory or directed networks are not available in STRING at this time. "
-        "All STRING links are **undirected** and represent functional or physical associations, "
-        "not regulatory direction. \n\n"
-        "Apologies for the inconvenience — regulatory network support is planned for a future STRING release."
+        "STRING regulatory networks contain directed source-to-target regulatory relationships. "
+        "The regulatory combined confidence describes support for a regulatory relationship between a protein pair, "
+        "while the directional confidence describes support for the displayed source-to-target direction. "
+        "A positive, negative, or unknown sign applies only to that directed relationship. \n\n"
+        "A regulatory arrow is evidence for a directed relationship; by itself it does not establish a direct biochemical "
+        "action or a complete causal pathway. An unknown sign means STRING has not assigned positive or negative regulation. "
+        "For the meaning of arrowheads, signs, and edge colors, see the `network_edge_legend` help topic."
     ),
     "how_to_use_string": (
         "Do not describe the usage of the MCP / Agent, but focus on general STRING usage.\n\n"
@@ -102,31 +129,40 @@ HELP_TOPICS = {
         "For additional guidance visit the full help pages:\n"
         "https://string-db.org/cgi/help?"
     ),
-    "line_colors": (
-        "STRING networks can be visualized in two modes: **Confidence** and **Evidence**.\n\n"
-    
+    "network_edge_legend": (
+        "**Typed view — functional networks only**:\n"
+        "- Grey line — functional association\n"
+        "- Orange line — physical interaction\n"
+        "- Blue arrow — regulatory relationship with unknown effect\n"
+        "- Green arrow — positive regulation / activation\n"
+        "- Red arrow — negative regulation / inhibition\n\n"
+
+        "A protein pair can have more than one relationship type. These are shown as parallel lines; regulatory "
+        "arrows can also be present in both directions. Their colors encode effect; explicit `+`/`−` labels are not shown. "
+        "Line thickness and opacity do not encode confidence in this view.\n\n"
+
         "**Confidence view**:\n"
-        "- All edges use a single color.\n"
-        "- Line **thickness** reflects the confidence score (0–1000).\n\n"
-    
-        "**Evidence view** (default):\n"
-        "Edges are colored according to the type of supporting evidence. All edges have equal thickness.\n\n"
-        
-        "**Known interactions**:\n"
-        "- From curated databases — grey / blue-grey\n"
-        "- Experimentally determined — violet\n\n"
-        
-        "**Predicted interactions**:\n"
-        "- Gene neighborhood — dark green\n"
-        "- Gene fusions — red\n"
-        "- Gene co-occurrence — dark blue\n\n"
-        
-        "**Others**:\n"
-        "- Textmining — light green (lime)\n"
-        "- Co-expression — black\n"
-        "- Protein homology — light blue\n\n"
-        
-        "**Note:** Protein homology is shown for reference only and is *not included* in the combined confidence score."
+        "- Functional or physical network: grey lines show associations; line thickness and opacity increase with combined confidence.\n"
+        "- Regulatory network: arrowheads point from regulator to target. A green open arrowhead indicates positive regulation, "
+        "a red T-bar indicates negative regulation, and a grey arrowhead has unknown effect. Arrow opacity reflects confidence "
+        "in the displayed direction.\n\n"
+
+        "**Evidence view**:\n"
+        "- Functional network: each colored line represents a supporting evidence channel — gene neighborhood (dark green), "
+        "gene fusion (light green), phylogenetic co-occurrence (medium green), co-expression (orange), experiments (dark red), "
+        "curated databases (dark blue), or text mining (light blue).\n"
+        "- Physical or regulatory network: evidence lines use only experiments (dark red), curated databases (dark blue), and "
+        "text mining (light blue).\n\n"
+
+        "In a regulatory evidence network, arrowheads show direction and explicit `+`/`−` labels show effect. Edge colors "
+        "continue to show evidence source; they do not encode regulatory effect. Line thickness and opacity do not encode "
+        "confidence in this view.\n\n"
+
+        "**Clustered network**:\n"
+        "- Solid lines — links within a cluster\n"
+        "- Dashed lines — links between clusters\n\n"
+
+        "For score meanings, see the `scores` help topic."
     ),
     "version_and_citation": (
         "Current STRING version: v12.0\n\n"
@@ -137,4 +173,9 @@ HELP_TOPICS = {
         "PMID: 39558183.\n\n"
         "PubMed: https://pubmed.ncbi.nlm.nih.gov/39558183/"
     ),
+}
+
+
+HELP_TOPIC_ALIASES = {
+    "line_colors": "network_edge_legend",
 }

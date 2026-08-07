@@ -19,7 +19,8 @@ The server listens on the configured port and serves tools via streamable-http t
 
 Requirements:
 
-fastmcp>=2.10.6,<2.11
+fastmcp==2.14.7
+mcp==1.29.0
 httpx>=0.28,<0.29
 pydantic>=2.11,<2.12
 
@@ -43,11 +44,11 @@ from typing import Annotated, Literal, Optional
 from pydantic import Field
 from fastmcp import FastMCP
 
-from string_help import HELP_TOPICS
+from string_help import HELP_TOPICS, HELP_TOPIC_ALIASES
 
 BinaryFlag = Literal[0, 1]
-NetworkType = Literal["functional", "physical"]
-NetworkFlavor = Literal["evidence", "confidence"]
+NetworkType = Literal["functional", "physical", "regulatory"]
+NetworkFlavor = Literal["evidence", "confidence", "typed"]
 ClusteringAlgorithm = Literal["MCL", "kmeans"]
 EnrichmentImageCategory = Literal[
     "Process",
@@ -81,7 +82,14 @@ EnrichmentImageColorPalette = Literal[
     "straw_navy",
     "yellow_pink",
 ]
-HelpTopic = Enum("HelpTopic", {topic: topic for topic in HELP_TOPICS}, type=str)
+HelpTopic = Enum(
+    "HelpTopic",
+    {
+        topic: topic
+        for topic in [*HELP_TOPICS, *HELP_TOPIC_ALIASES]
+    },
+    type=str,
+)
 
 try:
     with open("config/server.config") as f:
@@ -104,6 +112,27 @@ if not server_port:
 timeout = float(config.get("timeout", 100))
 
 
+NETWORK_TYPE_DESCRIPTION = (
+    "Optional. Omit for the default functional network. Set physical for binding, complex, or co-complex "
+    "questions. Set regulatory for directed regulatory relationships between proteins."
+)
+NETWORK_FLAVOR_DESCRIPTION = (
+    "Optional. Defaults are typed for functional networks, evidence for physical networks, and confidence for "
+    "regulatory networks. Typed provides an integrated functional, physical, and regulatory overview and is "
+    "available only for functional networks. Set evidence or confidence only when the user requests that edge "
+    "display style."
+)
+NETWORK_DEFAULT_FLAVORS = {
+    "functional": "typed",
+    "physical": "evidence",
+    "regulatory": "confidence",
+}
+EXPANDED_NETWORK_NOTE = (
+    "Internal guidance: This network was expanded where possible. Colored nodes denote input proteins and white nodes "
+    "denote added proteins; use `string_interactions_query_set` with the same parameters to discuss relationships in this network."
+)
+
+
 def _normalize_required_score(required_score: Optional[int]) -> Optional[int]:
     if required_score is None:
         return None
@@ -117,6 +146,39 @@ def _normalize_required_score(required_score: Optional[int]) -> Optional[int]:
         return int(required_score)
     except (TypeError, ValueError):
         return 0
+
+
+def apply_network_parameters(params, network_type=None, network_flavor=None):
+    """Add network selection parameters and return their effective values.
+
+    Defaults are typed for functional networks, evidence for physical networks,
+    and confidence for regulatory networks. Typed requests for a non-functional
+    network fall back to that network type's default flavor.
+    """
+    effective_network_type = network_type or "functional"
+    effective_network_flavor = network_flavor
+    network_flavor_note = None
+
+    if network_type is not None:
+        params["network_type"] = network_type
+
+    default_network_flavor = NETWORK_DEFAULT_FLAVORS[effective_network_type]
+    if effective_network_flavor is None:
+        effective_network_flavor = default_network_flavor
+
+    if (
+        effective_network_type != "functional"
+        and effective_network_flavor == "typed"
+    ):
+        effective_network_flavor = default_network_flavor
+        network_flavor_note = (
+            "Typed view is available only for functional networks; this "
+            f"{effective_network_type} network uses {effective_network_flavor} view."
+        )
+
+    params["network_flavor"] = effective_network_flavor
+
+    return effective_network_type, effective_network_flavor, network_flavor_note
 
 
 ## logging verbosity ## 
@@ -345,9 +407,11 @@ async def string_interactions_query_set(
     ] = None,
     network_type: Annotated[
         Optional[NetworkType],
-        Field(description=(
-            "Optional. Omit for STRING default functional associations. Set physical only for binding, complex, or co-complex questions."
-        ))
+        Field(description=NETWORK_TYPE_DESCRIPTION)
+    ] = None,
+    network_flavor: Annotated[
+        Optional[NetworkFlavor],
+        Field(description=NETWORK_FLAVOR_DESCRIPTION)
     ] = None,
     extend_network: Annotated[
         Optional[int],
@@ -371,11 +435,9 @@ async def string_interactions_query_set(
     """
     Retrieves the interactions between the query proteins.
     Use this method only when you specifically need to list the interactions between all proteins in your query set.
-    If user asks for 'physical' or 'complex' use 'physical' network type.
     
     - For a **single protein**, the network includes that protein and its top 10 most likely interaction partners, plus all interactions among those partners.
     - For **multiple proteins**, the network includes all direct interactions between them.
-    - If the user refers to "physical interactions", "complexes", or "binding", set the network type to "physical".
     - STRING does not store or report information about self-interactions/homomers; if asked, explain the limitation.
     
     If few or no interactions are returned, consider reducing the `required_score`.
@@ -395,8 +457,11 @@ async def string_interactions_query_set(
         params["species"] = species
     if required_score is not None:
         params["required_score"] = required_score
-    if network_type is not None:
-        params["network_type"] = network_type
+    effective_network_type, effective_network_flavor, network_flavor_note = apply_network_parameters(
+        params,
+        network_type,
+        network_flavor,
+    )
     if extend_network is not None:
         params["add_white_nodes"] = extend_network
     #if show_query_node_labels is not None:
@@ -421,9 +486,16 @@ async def string_interactions_query_set(
         results = await _post_json(client, endpoint, data=params)
         if 'error' in results: return results
         else:
-            formatted_network = format_query_set_network(results, required_score)
+            formatted_network = format_network_query_results(
+                results,
+                required_score,
+                effective_network_type,
+                effective_network_flavor,
+            )
 
         notes = []
+        if network_flavor_note:
+            notes.append(network_flavor_note)
 
 
         if add_score_note:
@@ -471,7 +543,7 @@ async def string_interactions_query_set(
      
         if add_shared_note:
             notes.append(
-                "For two- and three-protein queries, the network was expanded by five additional proteins to reveal possible shared or indirect interactions between the queried proteins. "
+                "For two- and three-protein queries, STRING attempted network expansion to reveal possible shared or indirect interactions between the queried proteins. "
                 "Report only interactions that are directly between the queried proteins or that form a clear shared-interactor/indirect path connecting the queried proteins. "
                 "Do not mention expanded-network edges that are unrelated to the relationship between the queried proteins. "
                 "For a more thorough investigation of shared interactors, use the `string_all_interaction_partners` tool."
@@ -520,9 +592,11 @@ async def string_all_interaction_partners(
     ] = None,
     network_type: Annotated[
         Optional[NetworkType],
-        Field(description=(
-            "Optional. Omit for STRING default functional associations. Set physical only for binding, complex, or co-complex questions."
-        ))
+        Field(description=NETWORK_TYPE_DESCRIPTION)
+    ] = None,
+    network_flavor: Annotated[
+        Optional[NetworkFlavor],
+        Field(description=NETWORK_FLAVOR_DESCRIPTION)
     ] = None
 ) -> dict:
     """
@@ -532,7 +606,6 @@ async def string_all_interaction_partners(
     
     - Use this when asking **“What does TP53 interact with?”**
     - It differs from the `network` tool, which only shows interactions **within the input set** or a limited extension of it.
-    - If the user refers to "physical interactions", "complexes", or "binding", set the network type to "physical".
 
     You can filter for strong interactions using `required_score`.
 
@@ -549,8 +622,11 @@ async def string_all_interaction_partners(
         params["species"] = species
     if required_score is not None:
         params["required_score"] = required_score
-    if network_type is not None:
-        params["network_type"] = network_type
+    effective_network_type, effective_network_flavor, network_flavor_note = apply_network_parameters(
+        params,
+        network_type,
+        network_flavor,
+    )
 
     endpoint = "/api/json/interaction_partners"
     async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
@@ -560,9 +636,16 @@ async def string_all_interaction_partners(
             log_response_size(results)
             return results
         else:
-            formatted_interactions = format_interaction_partners(results, required_score)
+            formatted_interactions = format_interaction_partner_results(
+                results,
+                required_score,
+                effective_network_type,
+                effective_network_flavor,
+            )
 
         notes = []
+        if network_flavor_note:
+            notes.append(network_flavor_note)
 
         notes.extend(formatted_interactions["notes"])
 
@@ -620,11 +703,11 @@ async def string_visual_network(
     ] = None,
     network_type: Annotated[
         Optional[NetworkType],
-        Field(description="Optional. Omit for STRING default functional associations. Set physical only for binding, complex, or co-complex questions.")
+        Field(description=NETWORK_TYPE_DESCRIPTION)
     ] = None,
     network_flavor: Annotated[
         Optional[NetworkFlavor],
-        Field(description="Optional. Edge style. Omit for STRING default evidence styling. Set only when the user asks for evidence or confidence edge display.")
+        Field(description=NETWORK_FLAVOR_DESCRIPTION)
     ] = None,
     hide_disconnected_nodes: Annotated[
         Optional[BinaryFlag],
@@ -653,7 +736,6 @@ async def string_visual_network(
     
     - For a single protein: includes the protein and its top 10 most likely interactors.
     - For multiple proteins: includes all known interactions **within the query set**.
-    - If the user asks for "physical interactions", "complexes", or "binding", set `network_type` to "physical".
     
     The input may include one numeric value per protein, such as fold change, effect size, or score.
     These values are visualized as colored halos around the nodes, allowing overlay of protein-level measurements on the network.
@@ -689,10 +771,11 @@ async def string_visual_network(
         params["add_white_nodes"] = extend_network
     if required_score is not None:
         params["required_score"] = required_score
-    if network_type is not None:
-        params["network_type"] = network_type
-    if network_flavor is not None:
-        params["network_flavor"] = network_flavor
+    effective_network_type, effective_network_flavor, network_flavor_note = apply_network_parameters(
+        params,
+        network_type,
+        network_flavor,
+    )
     if hide_disconnected_nodes is not None:
         params["hide_disconnected_nodes"] = hide_disconnected_nodes
     if do_not_show_structures is not None:
@@ -723,6 +806,11 @@ async def string_visual_network(
         results = await _post_json(client, endpoint, data=params)
 
         notes = []
+        if network_flavor_note:
+            notes.append(network_flavor_note)
+
+        if params.get("add_white_nodes"):
+            notes.append(EXPANDED_NETWORK_NOTE)
 
         if add_score_note:
             notes.append("For small queries, the `required_score` parameter was lowered to 0.")
@@ -732,7 +820,7 @@ async def string_visual_network(
 
         if add_shared_note:
             notes.append(
-                "For two- and three-protein queries, the network image was expanded by five additional proteins to reveal possible shared or indirect interactions between the queried proteins. "
+                "For two- and three-protein queries, the network image was expanded with up to five additional proteins to reveal possible shared or indirect interactions between the queried proteins. "
                 "Do not infer interactions from the image alone; use `string_interactions_query_set` with the same parameters to verify whether direct or indirect interactions are present. "
                 "Report only interactions that are directly between the queried proteins or that form a clear shared-interactor/indirect path connecting the queried proteins. "
                 "Do not mention expanded-network edges that are unrelated to the relationship between the queried proteins. "
@@ -743,7 +831,14 @@ async def string_visual_network(
  
         log_response_size(results)
 
-        return {"notes": notes, "image_url": results}
+        return {
+            "network_view": {
+                "network_type": effective_network_type,
+                "network_flavor": effective_network_flavor,
+            },
+            "notes": notes,
+            "image_url": results,
+        }
 
 
 @mcp.tool(title="STRING: Perform network clustering")
@@ -778,7 +873,7 @@ async def string_network_clustering(
     ] = None,
     network_type: Annotated[
         Optional[NetworkType],
-        Field(description="Optional. Omit for STRING default functional associations. Set physical only for binding, complex, or co-complex questions.")
+        Field(description=NETWORK_TYPE_DESCRIPTION)
     ] = None,
     clustering_algorithm: Annotated[
         Optional[ClusteringAlgorithm],
@@ -800,7 +895,7 @@ async def string_network_clustering(
     ] = None,
     network_flavor: Annotated[
         Optional[NetworkFlavor],
-        Field(description="Optional. Edge display style. Omit for STRING default evidence styling. Set only when the user asks for evidence or confidence edge display.")
+        Field(description=NETWORK_FLAVOR_DESCRIPTION)
     ] = None,
     hide_disconnected_nodes: Annotated[
         Optional[BinaryFlag],
@@ -812,8 +907,8 @@ async def string_network_clustering(
     ] = None,
 ) -> dict:
     """
-    Performs **network clustering** on a STRING interaction network and returns both a **network image URL**
-    and details about each detected cluster.
+    Performs **network clustering** on a STRING interaction network and returns a network image URL,
+    an interactive STRING network URL, and details about each detected cluster.
     
     Use the same parameters as in the network creation step to ensure consistency.
     If the network already contains disconnected subgraphs, the resulting number of clusters may differ from the requested value.
@@ -837,10 +932,11 @@ async def string_network_clustering(
         params["add_white_nodes"] = extend_network
     if required_score is not None:
         params["required_score"] = required_score
-    if network_type is not None:
-        params["network_type"] = network_type
-    if network_flavor is not None:
-        params["network_flavor"] = network_flavor
+    effective_network_type, effective_network_flavor, network_flavor_note = apply_network_parameters(
+        params,
+        network_type,
+        network_flavor,
+    )
     if hide_disconnected_nodes is not None:
         params["hide_disconnected_nodes"] = hide_disconnected_nodes
 
@@ -895,25 +991,51 @@ async def string_network_clustering(
         log_call(endpoint, params)
         results = await _post_json(client, endpoint, data=params)
 
+        link_results = []
+        if isinstance(results, list):
+            link_endpoint = "/api/json/get_link"
+            log_call(link_endpoint, params)
+            link_results = await _post_json(client, link_endpoint, data=params)
+
         notes = []
+        if network_flavor_note:
+            notes.append(network_flavor_note)
+        if params.get("add_white_nodes"):
+            notes.append(EXPANDED_NETWORK_NOTE)
         if add_score_note:
             notes.append("For small queries, the required_score parameter is automatically lowered to 0.")
         notes.append("Embed the returned image link directly in the assistant response as a markdown image.")
 
         log_response_size(results)
+        log_response_size(link_results)
 
         image_url = None
         if results and isinstance(results, list) and "imageURL" in results[0]:
             image_url = results[0].get("imageURL")
             for cluster in results:
                 cluster.pop("imageURL", None)
+
+        interactive_network_url = None
+        if isinstance(link_results, list) and link_results:
+            interactive_network_url = link_results[0]
+
+        if interactive_network_url:
+            notes.append(
+                "When the user asks for a clickable STRING page, provide "
+                "`interactive_network_url`; it displays this clustered network."
+            )
         
         clustering_note = get_clustering_structure_note(results, clustering_algorithm)
         if clustering_note:
             notes.append(clustering_note)
 
         return {
+            "network_view": {
+                "network_type": effective_network_type,
+                "network_flavor": effective_network_flavor,
+            },
             "image_url": image_url,
+            "interactive_network_url": interactive_network_url,
             "clusters": results,
             "notes": notes,
         }
@@ -943,11 +1065,11 @@ async def string_network_link(
     ] = None,
     network_flavor: Annotated[
         Optional[NetworkFlavor],
-        Field(description="Optional. Edge style. Omit for STRING default evidence styling. Set only when the user asks for evidence or confidence edge display.")
+        Field(description=NETWORK_FLAVOR_DESCRIPTION)
     ] = None,
     network_type: Annotated[
         Optional[NetworkType],
-        Field(description="Optional. Omit for STRING default functional associations. Set physical only for binding, complex, or co-complex questions.")
+        Field(description=NETWORK_TYPE_DESCRIPTION)
     ] = None,
     hide_disconnected_nodes: Annotated[
         Optional[BinaryFlag],
@@ -962,7 +1084,6 @@ async def string_network_link(
     
     - For a single protein: includes the protein and its top 10 most likely interactors.
     - For multiple proteins: includes all known interactions **within the query set**.
-    - If the user asks for "physical interactions", "complexes", or "binding", set `network_type` to "physical".
     
     The input may include one numeric value per protein, such as fold change, effect size, or score.
     These values are visualized as colored halos around the nodes, allowing overlay of protein-level measurements on the network.
@@ -997,20 +1118,19 @@ async def string_network_link(
         params["add_white_nodes"] = extend_network
     if required_score is not None:
         params["required_score"] = required_score
-    if network_flavor is not None:
-        params["network_flavor"] = network_flavor
-    if network_type is not None:
-        params["network_type"] = network_type
+    effective_network_type, effective_network_flavor, network_flavor_note = apply_network_parameters(
+        params,
+        network_type,
+        network_flavor,
+    )
     if hide_disconnected_nodes is not None:
         params["hide_disconnected_nodes"] = hide_disconnected_nodes
 
 
     add_score_note = False
-    add_shared_note = False
 
     if len(proteins.lower().split('%0d')) in [2,3] and extend_network is None:
         params['add_white_nodes'] = 5
-        add_shared_note = True
 
     if not required_score and len(proteins.lower().split("%0d")) <= 5:
         params["required_score"] = 0
@@ -1023,22 +1143,25 @@ async def string_network_link(
         results = await _post_json(client, endpoint, data=params)
 
         notes = []
+        if network_flavor_note:
+            notes.append(network_flavor_note)
+        if params.get("add_white_nodes"):
+            notes.append(EXPANDED_NETWORK_NOTE)
         if add_score_note:
             notes.append(f"For small queries the required_score parameter is lowered to 0.")
-
-        if add_shared_note:
-            notes.append(
-                "For two- and three-protein queries, the network link was expanded by five additional proteins to reveal possible shared or indirect interactions between the queried proteins. "
-                "When describing the link, tell the user they can inspect it for a potential direct interaction or clear shared-interactor/indirect path connecting the queried proteins. "
-                "Do not mention unrelated expanded-network edges as evidence about the relationship between the queried proteins."
-            )
- 
 
         notes.append("Embed the returned link directly in the assistant response as a markdown hyperlink.")
  
         log_response_size(results)
 
-        return {"notes": notes, "results": results}
+        return {
+            "network_view": {
+                "network_type": effective_network_type,
+                "network_flavor": effective_network_flavor,
+            },
+            "notes": notes,
+            "results": results,
+        }
 
 
 @mcp.tool(title="STRING: Get homologs in specified target species")
@@ -1101,6 +1224,13 @@ async def string_interaction_evidence(
         str,
         Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
     ] = None,
+    network_type: Annotated[
+        Optional[NetworkType],
+        Field(description=(
+            "Optional. Set physical for physical-interaction evidence or regulatory for directed regulatory evidence. "
+            "Omit for the functional interaction evidence page."
+        ))
+    ] = None,
 ) -> dict:
     """
     Retrieves direct links to STRING evidence pages for protein–protein interaction pairs.
@@ -1111,11 +1241,13 @@ async def string_interaction_evidence(
     It returns URLs linking to STRING’s evidence pages, which display the underlying data sources 
     (experimental results, publications, and curated databases) supporting each predicted interaction.  
     A URL can be generated even for unsupported pairs; the URL is not itself an interaction verdict.
+    The returned page lets the user explore functional, physical, and regulatory relationship views through its tabs.
     
     Parameters:
     - **identifier_a**: Query protein identifier (Protein A)
     - **identifiers_b**: One or more target protein identifiers (Protein B), separated by `%0d`
     - **species**: NCBI taxonomy ID (e.g. `9606` for human or `10090` for mouse)
+    - **network_type**: Set to `physical` for physical evidence or `regulatory` for directed regulatory evidence.
     
     Typical user questions that should trigger this tool:
     - "Can you show me the STRING evidence for this interaction?"
@@ -1126,9 +1258,15 @@ async def string_interaction_evidence(
 
     identifiers_b = identifiers_b.replace('%0D', '%0d')
 
+    evidence_path = "interaction"
+    if network_type == "physical":
+        evidence_path = "interaction-physical"
+    elif network_type == "regulatory":
+        evidence_path = "interaction-regulatory"
+
     output = []
     for identifier_b in identifiers_b.split("%0d"):
-        link = f"{base_url}/interaction/{identifier_a}/{identifier_b}?species={species}&suppress_disambiguation=1"
+        link = f"{base_url}/{evidence_path}/{identifier_a}/{identifier_b}?species={species}&suppress_disambiguation=1"
         output.append(link)
 
     notes = []
@@ -1702,13 +1840,13 @@ async def string_help(
     
     Use this tool when the user question involves:
       - What is STRING is or how to use the tool (how_to_use_string, cytoscape)
-      - functionality not available via MCP tools (e.g. GSEA, regulatory networks, large datasets).
-      - meaning of the lines in the network (line_colors)
+      - functionality not available via MCP tools (e.g. GSEA or large datasets).
+      - meaning of network edges and their visual encoding (network_edge_legend)
     """
     if topic is None:
         return {"topics": list(HELP_TOPICS.keys())}
 
-    key = topic.lower()
+    key = HELP_TOPIC_ALIASES.get(topic.lower(), topic.lower())
     if key not in HELP_TOPICS:
         return {
             "error": f"Unknown topic '{topic}'. Available: {', '.join(HELP_TOPICS.keys())}."
@@ -2185,6 +2323,36 @@ NETWORK_SCORE_CHANNELS = {
     "tscore": "textmining",
 }
 
+REGULATORY_EVIDENCE_CHANNELS = {
+    "experimental_score": "experimental",
+    "database_score": "database",
+    "textmining_score": "textmining",
+}
+
+TYPED_FUNCTIONAL_EVIDENCE_CHANNELS = {
+    "functional_neighborhood_on_chromosome_score": "neighborhood_on_chromosome",
+    "functional_gene_fusion_score": "gene_fusion",
+    "functional_phylogenetic_cooccurrence_score": "phylogenetic_cooccurrence",
+    "functional_homology_score": "homology",
+    "functional_coexpression_score": "coexpression",
+    "functional_experimental_score": "experimental",
+    "functional_database_score": "database",
+    "functional_textmining_score": "textmining",
+}
+
+TYPED_PHYSICAL_EVIDENCE_CHANNELS = {
+    "physical_homology_score": "homology",
+    "physical_experimental_score": "experimental",
+    "physical_database_score": "database",
+    "physical_textmining_score": "textmining",
+}
+
+TYPED_REGULATORY_EVIDENCE_CHANNELS = {
+    "regulatory_experimental_score": "experimental",
+    "regulatory_database_score": "database",
+    "regulatory_textmining_score": "textmining",
+}
+
 QUERY_SET_EDGE_SAMPLE_LIMIT = 100
 QUERY_SET_NODE_SUMMARY_LIMIT = 250
 PARTNER_INTERACTION_DETAIL_LIMIT = 500
@@ -2201,6 +2369,670 @@ def normalize_score_threshold(input_score_threshold):
     if threshold > 1:
         return threshold / 1000.0
     return threshold
+
+
+def parse_confidence_score(value):
+    if value in (None, "", "-", "n/a"):
+        return None
+
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def round_confidence_score(value):
+    return round(value, 3) if value is not None else None
+
+
+def collect_nonzero_evidence(raw_row, evidence_channels):
+    evidence = {}
+
+    for source_key, output_key in evidence_channels.items():
+        score = parse_confidence_score(raw_row.get(source_key))
+        if score:
+            evidence[output_key] = round_confidence_score(score)
+
+    return evidence
+
+
+def normalize_regulatory_sign(sign):
+    normalized_sign = str(sign or "").strip().lower()
+
+    if normalized_sign in ("pos", "positive"):
+        return "positive"
+    if normalized_sign in ("neg", "negative"):
+        return "negative"
+    return "unknown"
+
+
+def build_regulatory_edge(raw_row):
+    combined_confidence = parse_confidence_score(raw_row.get("combined_score"))
+    directional_confidence = parse_confidence_score(raw_row.get("directional_score"))
+
+    return {
+        "source_preferred_name": raw_row.get("source_preferred_name"),
+        "target_preferred_name": raw_row.get("target_preferred_name"),
+        "source_string_id": raw_row.get("source_string_id"),
+        "target_string_id": raw_row.get("target_string_id"),
+        "ncbi_taxon_id": raw_row.get("ncbiTaxonId"),
+        "regulatory_combined_confidence": combined_confidence,
+        "regulatory_directional_confidence": directional_confidence,
+        "sign": normalize_regulatory_sign(raw_row.get("sign")),
+        "evidence": collect_nonzero_evidence(raw_row, REGULATORY_EVIDENCE_CHANNELS),
+    }
+
+
+def prepare_regulatory_edges(data, score_threshold):
+    edges = []
+
+    for raw_row in data:
+        edge = build_regulatory_edge(raw_row)
+        combined_confidence = edge["regulatory_combined_confidence"]
+        directional_confidence = edge["regulatory_directional_confidence"]
+
+        if combined_confidence is None or combined_confidence < score_threshold:
+            continue
+        if directional_confidence is None:
+            continue
+
+        edges.append(edge)
+
+    edges.sort(
+        key=lambda edge: (
+            edge["regulatory_combined_confidence"],
+            edge["regulatory_directional_confidence"],
+        ),
+        reverse=True,
+    )
+    return edges
+
+
+def compact_regulatory_edge(edge, mode):
+    output = {
+        "source_preferred_name": edge["source_preferred_name"],
+        "target_preferred_name": edge["target_preferred_name"],
+        "regulatory_combined_confidence": round_confidence_score(
+            edge["regulatory_combined_confidence"]
+        ),
+        "regulatory_directional_confidence": round_confidence_score(
+            edge["regulatory_directional_confidence"]
+        ),
+        "sign": edge["sign"],
+    }
+
+    if mode == "full":
+        output["source_string_id"] = edge["source_string_id"]
+        output["target_string_id"] = edge["target_string_id"]
+        output["ncbi_taxon_id"] = edge["ncbi_taxon_id"]
+
+    if mode in ("full", "evidence") and edge["evidence"]:
+        output["evidence"] = edge["evidence"]
+
+    return output
+
+
+def build_numeric_summary(values):
+    if not values:
+        return {"min": 0, "mean": 0, "max": 0}
+
+    return {
+        "min": round(min(values), 3),
+        "mean": round(sum(values) / len(values), 3),
+        "max": round(max(values), 3),
+    }
+
+
+def build_regulatory_node_counts(edges):
+    node_stats = {}
+
+    for edge in edges:
+        source_name = edge["source_preferred_name"]
+        target_name = edge["target_preferred_name"]
+        directional_confidence = edge["regulatory_directional_confidence"]
+
+        if not source_name or not target_name:
+            continue
+
+        source_stats = node_stats.setdefault(
+            source_name,
+            {
+                "gene": source_name,
+                "incoming_regulatory_relationship_count": 0,
+                "outgoing_regulatory_relationship_count": 0,
+                "incoming_directional_confidence_sum": 0.0,
+                "outgoing_directional_confidence_sum": 0.0,
+            },
+        )
+        target_stats = node_stats.setdefault(
+            target_name,
+            {
+                "gene": target_name,
+                "incoming_regulatory_relationship_count": 0,
+                "outgoing_regulatory_relationship_count": 0,
+                "incoming_directional_confidence_sum": 0.0,
+                "outgoing_directional_confidence_sum": 0.0,
+            },
+        )
+
+        source_stats["outgoing_regulatory_relationship_count"] += 1
+        source_stats["outgoing_directional_confidence_sum"] += directional_confidence
+        target_stats["incoming_regulatory_relationship_count"] += 1
+        target_stats["incoming_directional_confidence_sum"] += directional_confidence
+
+    output = []
+    for stats in node_stats.values():
+        output.append({
+            "gene": stats["gene"],
+            "incoming_regulatory_relationship_count": stats[
+                "incoming_regulatory_relationship_count"
+            ],
+            "outgoing_regulatory_relationship_count": stats[
+                "outgoing_regulatory_relationship_count"
+            ],
+            "incoming_directional_confidence_sum": round(
+                stats["incoming_directional_confidence_sum"],
+                3,
+            ),
+            "outgoing_directional_confidence_sum": round(
+                stats["outgoing_directional_confidence_sum"],
+                3,
+            ),
+        })
+
+    output.sort(
+        key=lambda item: (
+            item["incoming_regulatory_relationship_count"]
+            + item["outgoing_regulatory_relationship_count"],
+            item["incoming_directional_confidence_sum"]
+            + item["outgoing_directional_confidence_sum"],
+        ),
+        reverse=True,
+    )
+    return output
+
+
+def build_regulatory_network_summary(edges, score_threshold):
+    node_counts = build_regulatory_node_counts(edges)
+    combined_scores = [edge["regulatory_combined_confidence"] for edge in edges]
+    directional_scores = [edge["regulatory_directional_confidence"] for edge in edges]
+    sign_counts = {"positive": 0, "negative": 0, "unknown": 0}
+    node_count = len(node_counts)
+    max_possible_directed_edges = node_count * (node_count - 1)
+
+    for edge in edges:
+        sign_counts[edge["sign"]] += 1
+
+    return {
+        "nodes_with_interactions": len(node_counts),
+        "edges_above_cutoff": len(edges),
+        "directed_regulatory_relationships": len(edges),
+        "required_score": int(score_threshold * 1000),
+        "directed_density": round(
+            len(edges) / max_possible_directed_edges,
+            4,
+        ) if max_possible_directed_edges else 0,
+        "average_out_degree": round(len(edges) / node_count, 3) if node_count else 0,
+        "combined_confidence_summary": build_numeric_summary(combined_scores),
+        "directional_confidence_summary": build_numeric_summary(directional_scores),
+        "sign_counts": sign_counts,
+    }, node_counts
+
+
+def regulatory_score_notes():
+    return [
+        "`regulatory_combined_confidence` is the confidence that a regulatory relationship exists for the protein pair, without selecting a direction.",
+        "`regulatory_directional_confidence` is the confidence that the stated source regulates the stated target. The `required_score` cut-off filters protein pairs by regulatory combined confidence.",
+    ]
+
+
+def format_regulatory_network(data, input_score_threshold=None):
+    if not isinstance(data, list):
+        return {
+            "notes": ["STRING did not return a list of regulatory relationships."],
+            "network_summary": {},
+            "network": data,
+            "node_interaction_counts": [],
+            "edge_sample": [],
+        }
+
+    score_threshold = normalize_score_threshold(input_score_threshold)
+    edges = prepare_regulatory_edges(data, score_threshold)
+    network_summary, node_counts = build_regulatory_network_summary(edges, score_threshold)
+    node_counts_limited, node_counts_truncated = limit_list(
+        node_counts,
+        QUERY_SET_NODE_SUMMARY_LIMIT,
+    )
+
+    notes = [
+        f"There are {len(edges)} directed regulatory relationships above specified cutoff.",
+        *regulatory_score_notes(),
+    ]
+    node_interaction_counts = []
+
+    if len(edges) <= 30:
+        network = [compact_regulatory_edge(edge, "full") for edge in edges]
+    elif len(edges) <= 100:
+        network = [compact_regulatory_edge(edge, "evidence") for edge in edges]
+        notes.append(
+            "The network output was compacted: STRING protein IDs and zero-valued evidence channels were omitted."
+        )
+        notes.append(
+            "For detailed evidence-channel scores on specific regulatory relationships, subset the query to the proteins of interest and rerun the interaction query."
+        )
+    elif len(edges) <= 500:
+        network = [compact_regulatory_edge(edge, "score_only") for edge in edges]
+        node_interaction_counts = node_counts_limited
+        notes.append(
+            "All regulatory relationship rows are shown, but evidence-channel details were removed because the number of returned relationships is above 100."
+        )
+        notes.append(
+            "For detailed evidence-channel scores on specific regulatory relationships, subset the query to the proteins of interest and rerun the interaction query."
+        )
+    else:
+        network = [
+            compact_regulatory_edge(edge, "score_only")
+            for edge in edges[:QUERY_SET_EDGE_SAMPLE_LIMIT]
+        ]
+        node_interaction_counts = node_counts_limited
+        notes.append(
+            f"Only {len(network)} of {len(edges)} directed regulatory relationships are shown because the number of returned relationships is above 500. Evidence-channel details were removed; subset the query to inspect detailed evidence for specific relationships."
+        )
+        notes.append(
+            "The node interaction counts and network summary were computed from all returned relationships above the cutoff."
+        )
+
+    if node_counts_truncated:
+        notes.append(
+            f"Node interaction counts were truncated to the top {QUERY_SET_NODE_SUMMARY_LIMIT} nodes by degree."
+        )
+
+    return {
+        "notes": notes,
+        "network_summary": network_summary,
+        "network": network,
+        "node_interaction_counts": node_interaction_counts,
+        "edge_sample": [],
+    }
+
+
+def typed_protein_from_row(raw_row, suffix):
+    return {
+        "preferred_name": raw_row.get(f"preferredName_{suffix}"),
+        "string_id": raw_row.get(f"stringId_{suffix}"),
+    }
+
+
+def typed_protein_key(protein):
+    return protein["string_id"] or protein["preferred_name"] or ""
+
+
+def typed_pair_key(protein_a, protein_b):
+    return tuple(sorted((typed_protein_key(protein_a), typed_protein_key(protein_b))))
+
+
+def update_typed_layer(pair, layer_name, confidence, evidence):
+    if confidence is None:
+        return
+
+    existing_layer = pair.get(layer_name)
+    if (
+        existing_layer is None
+        or confidence > existing_layer["association_confidence"]
+    ):
+        pair[layer_name] = {
+            "association_confidence": confidence,
+            "evidence": evidence,
+        }
+
+
+def build_typed_pairs(data, score_threshold):
+    pairs_by_key = {}
+
+    for raw_row in data:
+        protein_a = typed_protein_from_row(raw_row, "A")
+        protein_b = typed_protein_from_row(raw_row, "B")
+        pair_key = typed_pair_key(protein_a, protein_b)
+
+        if not pair_key[0] or not pair_key[1]:
+            continue
+
+        functional_confidence = parse_confidence_score(
+            raw_row.get("functional_combined_score")
+        )
+        if functional_confidence is None or functional_confidence < score_threshold:
+            continue
+
+        pair = pairs_by_key.setdefault(
+            pair_key,
+            {
+                "proteins_by_key": {},
+                "functional": None,
+                "physical": None,
+                "regulatory": None,
+            },
+        )
+        pair["proteins_by_key"][typed_protein_key(protein_a)] = protein_a
+        pair["proteins_by_key"][typed_protein_key(protein_b)] = protein_b
+
+        update_typed_layer(
+            pair,
+            "functional",
+            functional_confidence,
+            collect_nonzero_evidence(raw_row, TYPED_FUNCTIONAL_EVIDENCE_CHANNELS),
+        )
+        update_typed_layer(
+            pair,
+            "physical",
+            parse_confidence_score(raw_row.get("physical_combined_score")),
+            collect_nonzero_evidence(raw_row, TYPED_PHYSICAL_EVIDENCE_CHANNELS),
+        )
+
+        combined_confidence = parse_confidence_score(
+            raw_row.get("regulatory_combined_score")
+        )
+        directional_confidence = parse_confidence_score(
+            raw_row.get("directional_regulatory_combined_score"))
+
+        if combined_confidence is not None or directional_confidence is not None:
+            regulatory_layer = pair["regulatory"]
+            if regulatory_layer is None:
+                regulatory_layer = {
+                    "combined_confidence": None,
+                    "directions_by_key": {},
+                }
+                pair["regulatory"] = regulatory_layer
+
+            if (
+                combined_confidence is not None
+                and (
+                    regulatory_layer["combined_confidence"] is None
+                    or combined_confidence > regulatory_layer["combined_confidence"]
+                )
+            ):
+                regulatory_layer["combined_confidence"] = combined_confidence
+
+            if directional_confidence is not None and directional_confidence > 0:
+                direction_key = (
+                    typed_protein_key(protein_a),
+                    typed_protein_key(protein_b),
+                )
+                existing_direction = regulatory_layer["directions_by_key"].get(direction_key)
+                if (
+                    existing_direction is None
+                    or directional_confidence > existing_direction["directional_confidence"]
+                ):
+                    regulatory_layer["directions_by_key"][direction_key] = {
+                        "source": protein_a,
+                        "target": protein_b,
+                        "directional_confidence": directional_confidence,
+                        "sign": normalize_regulatory_sign(raw_row.get("sign")),
+                        "evidence": collect_nonzero_evidence(
+                            raw_row,
+                            TYPED_REGULATORY_EVIDENCE_CHANNELS,
+                        ),
+                    }
+
+    pairs = []
+    for pair in pairs_by_key.values():
+        pair["proteins"] = sorted(
+            pair.pop("proteins_by_key").values(),
+            key=typed_protein_key,
+        )
+        pairs.append(pair)
+
+    pairs.sort(key=typed_pair_rank, reverse=True)
+    return pairs
+
+
+def typed_pair_rank(pair):
+    scores = []
+
+    for layer_name in ("functional", "physical"):
+        layer = pair.get(layer_name)
+        if layer is not None:
+            scores.append(layer["association_confidence"])
+
+    regulatory_layer = pair.get("regulatory")
+    if regulatory_layer is not None:
+        if regulatory_layer["combined_confidence"] is not None:
+            scores.append(regulatory_layer["combined_confidence"])
+        scores.extend(
+            direction["directional_confidence"]
+            for direction in regulatory_layer["directions_by_key"].values()
+        )
+
+    return max(scores, default=0)
+
+
+def compact_typed_protein(protein, include_string_id):
+    output = {"preferred_name": protein["preferred_name"]}
+    if include_string_id and protein["string_id"]:
+        output["string_id"] = protein["string_id"]
+    return output
+
+
+def compact_typed_layer(layer, mode):
+    output = {
+        "association_confidence": round_confidence_score(
+            layer["association_confidence"]
+        )
+    }
+    if mode in ("full", "evidence") and layer["evidence"]:
+        output["evidence"] = layer["evidence"]
+    return output
+
+
+def compact_typed_direction(direction, mode):
+    include_string_ids = mode == "full"
+    output = {
+        "source": direction["source"]["preferred_name"],
+        "target": direction["target"]["preferred_name"],
+        "directional_confidence": round_confidence_score(
+            direction["directional_confidence"]
+        ),
+        "sign": direction["sign"],
+    }
+
+    if include_string_ids:
+        output["source_string_id"] = direction["source"]["string_id"]
+        output["target_string_id"] = direction["target"]["string_id"]
+
+    if mode in ("full", "evidence") and direction["evidence"]:
+        output["evidence"] = direction["evidence"]
+
+    return output
+
+
+def compact_typed_pair(pair, mode):
+    output = {
+        "proteins": [
+            compact_typed_protein(protein, mode == "full")
+            for protein in pair["proteins"]
+        ]
+    }
+
+    if pair["functional"] is not None:
+        output["functional"] = compact_typed_layer(pair["functional"], mode)
+
+    if pair["physical"] is not None:
+        output["physical"] = compact_typed_layer(pair["physical"], mode)
+
+    regulatory_layer = pair["regulatory"]
+    if regulatory_layer is not None:
+        directions = sorted(
+            regulatory_layer["directions_by_key"].values(),
+            key=lambda direction: direction["directional_confidence"],
+            reverse=True,
+        )
+        output["regulatory"] = {
+            "combined_confidence": round_confidence_score(
+                regulatory_layer["combined_confidence"]
+            ),
+            "directions": [
+                compact_typed_direction(direction, mode)
+                for direction in directions
+            ],
+        }
+
+    return output
+
+
+def build_typed_network_summary(pairs, score_threshold):
+    functional_scores = []
+    physical_scores = []
+    regulatory_combined_scores = []
+    regulatory_directional_scores = []
+    sign_counts = {"positive": 0, "negative": 0, "unknown": 0}
+    node_rows = []
+
+    for pair in pairs:
+        protein_names = [
+            protein["preferred_name"]
+            for protein in pair["proteins"]
+            if protein["preferred_name"]
+        ]
+        if len(protein_names) == 2:
+            node_rows.append({
+                "preferredName_A": protein_names[0],
+                "preferredName_B": protein_names[1],
+                "score": typed_pair_rank(pair),
+            })
+
+        if pair["functional"] is not None:
+            functional_scores.append(pair["functional"]["association_confidence"])
+        if pair["physical"] is not None:
+            physical_scores.append(pair["physical"]["association_confidence"])
+
+        regulatory_layer = pair["regulatory"]
+        if regulatory_layer is None:
+            continue
+        if regulatory_layer["combined_confidence"] is not None:
+            regulatory_combined_scores.append(
+                regulatory_layer["combined_confidence"]
+            )
+
+        for direction in regulatory_layer["directions_by_key"].values():
+            regulatory_directional_scores.append(direction["directional_confidence"])
+            sign_counts[direction["sign"]] += 1
+
+    node_counts = build_node_interaction_counts(node_rows)
+    node_count = len(node_counts)
+    max_possible_edges = node_count * (node_count - 1) / 2
+    return {
+        "nodes_with_interactions": len(node_counts),
+        "edges_above_cutoff": len(pairs),
+        "typed_protein_pair_associations": len(pairs),
+        "functional_associations": len(functional_scores),
+        "physical_associations": len(physical_scores),
+        "regulatory_relationships": len(regulatory_combined_scores),
+        "directed_regulatory_relationships": len(regulatory_directional_scores),
+        "required_score": int(score_threshold * 1000),
+        "density": round(len(pairs) / max_possible_edges, 4) if max_possible_edges else 0,
+        "average_degree": round(2 * len(pairs) / node_count, 3) if node_count else 0,
+        "functional_confidence_summary": build_numeric_summary(functional_scores),
+        "physical_confidence_summary": build_numeric_summary(physical_scores),
+        "regulatory_combined_confidence_summary": build_numeric_summary(
+            regulatory_combined_scores
+        ),
+        "regulatory_directional_confidence_summary": build_numeric_summary(
+            regulatory_directional_scores
+        ),
+        "regulatory_sign_counts": sign_counts,
+    }, node_counts
+
+
+def typed_score_notes():
+    return [
+        "Each typed record represents one protein pair. Functional and physical confidences apply to the pair.",
+        "Within `regulatory`, `combined_confidence` is the confidence that a regulatory relationship exists for the protein pair, without selecting a direction. Each entry in `directions` gives the confidence and sign for its stated source-to-target regulatory relationship.",
+        "For typed functional networks, the `required_score` cut-off applies to the functional association confidence used to select the network. Regulatory combined and directional confidences are returned as additional typed annotations.",
+    ]
+
+
+def format_typed_network(data, input_score_threshold=None):
+    if not isinstance(data, list):
+        return {
+            "notes": ["STRING did not return a list of typed interactions."],
+            "network_summary": {},
+            "network": data,
+            "node_interaction_counts": [],
+            "edge_sample": [],
+        }
+
+    score_threshold = normalize_score_threshold(input_score_threshold)
+    pairs = build_typed_pairs(data, score_threshold)
+    network_summary, node_counts = build_typed_network_summary(pairs, score_threshold)
+    node_counts_limited, node_counts_truncated = limit_list(
+        node_counts,
+        QUERY_SET_NODE_SUMMARY_LIMIT,
+    )
+    directed_relationship_count = network_summary[
+        "directed_regulatory_relationships"
+    ]
+    notes = [
+        f"There are {len(pairs)} typed protein-pair associations above specified cutoff, including {directed_relationship_count} directed regulatory relationships.",
+        *typed_score_notes(),
+    ]
+    node_interaction_counts = []
+
+    if len(pairs) <= 30:
+        network = [compact_typed_pair(pair, "full") for pair in pairs]
+    elif len(pairs) <= 100:
+        network = [compact_typed_pair(pair, "evidence") for pair in pairs]
+        notes.append(
+            "The typed network output was compacted: STRING protein IDs and zero-valued evidence channels were omitted."
+        )
+        notes.append(
+            "For detailed evidence-channel scores on specific interactions, subset the query to the proteins of interest and rerun the interaction query."
+        )
+    elif len(pairs) <= 500:
+        network = [compact_typed_pair(pair, "score_only") for pair in pairs]
+        node_interaction_counts = node_counts_limited
+        notes.append(
+            "All typed interaction records are shown, but evidence-channel details were removed because the number of returned interactions is above 100."
+        )
+        notes.append(
+            "For detailed evidence-channel scores on specific interactions, subset the query to the proteins of interest and rerun the interaction query."
+        )
+    else:
+        network = [
+            compact_typed_pair(pair, "score_only")
+            for pair in pairs[:QUERY_SET_EDGE_SAMPLE_LIMIT]
+        ]
+        node_interaction_counts = node_counts_limited
+        notes.append(
+            f"Only {len(network)} of {len(pairs)} typed interaction records are shown because the number of returned interactions is above 500. Evidence-channel details were removed; subset the query to inspect detailed evidence for specific interactions."
+        )
+        notes.append(
+            "The node interaction counts and network summary were computed from all returned interactions above the cutoff."
+        )
+
+    if node_counts_truncated:
+        notes.append(
+            f"Node interaction counts were truncated to the top {QUERY_SET_NODE_SUMMARY_LIMIT} nodes by degree."
+        )
+
+    return {
+        "notes": notes,
+        "network_summary": network_summary,
+        "network": network,
+        "node_interaction_counts": node_interaction_counts,
+        "edge_sample": [],
+    }
+
+
+def format_network_query_results(
+    data,
+    input_score_threshold,
+    network_type,
+    network_flavor,
+):
+    if network_type == "regulatory":
+        return format_regulatory_network(data, input_score_threshold)
+    if network_type == "functional" and network_flavor == "typed":
+        return format_typed_network(data, input_score_threshold)
+    return format_query_set_network(data, input_score_threshold)
 
 
 def format_query_set_network(data, input_score_threshold=None, include_counts_when_compacted=False):
@@ -2352,6 +3184,225 @@ def format_interaction_partners(data, input_score_threshold=None):
         "node_summary": node_summary,
         "interactions": interactions,
     }
+
+
+def build_regulatory_partner_summary(edges, score_threshold):
+    regulatory_summary, node_counts = build_regulatory_network_summary(
+        edges,
+        score_threshold,
+    )
+    proteins = sorted({
+        protein_name
+        for edge in edges
+        for protein_name in (
+            edge["source_preferred_name"],
+            edge["target_preferred_name"],
+        )
+        if protein_name
+    })
+    node_counts_limited, node_counts_truncated = limit_list(
+        node_counts,
+        QUERY_SET_NODE_SUMMARY_LIMIT,
+    )
+    proteins_limited, proteins_truncated = limit_list(
+        proteins,
+        PARTNER_UNIQUE_PROTEIN_LIMIT,
+    )
+
+    node_summary = {
+        "return_mode": "directed_regulatory_interaction_list_with_limits",
+        "interactions_above_cutoff": len(edges),
+        "directed_regulatory_relationships": len(edges),
+        "required_score": int(score_threshold * 1000),
+        "nodes_with_interactions": regulatory_summary["nodes_with_interactions"],
+        "combined_confidence_summary": regulatory_summary[
+            "combined_confidence_summary"
+        ],
+        "directional_confidence_summary": regulatory_summary[
+            "directional_confidence_summary"
+        ],
+        "sign_counts": regulatory_summary["sign_counts"],
+        "interaction_counts": node_counts_limited,
+        "returned_interaction_counts": len(node_counts_limited),
+        "proteins_in_returned_interactions": proteins_limited,
+        "returned_protein_names": len(proteins_limited),
+    }
+    return node_summary, node_counts_truncated, proteins_truncated
+
+
+def format_regulatory_interaction_partners(data, input_score_threshold=None):
+    if not isinstance(data, list):
+        return {
+            "notes": ["STRING did not return a list of regulatory interaction partners."],
+            "node_summary": {"return_mode": "unmodified"},
+            "interactions": data,
+        }
+
+    score_threshold = normalize_score_threshold(input_score_threshold)
+    edges = prepare_regulatory_edges(data, score_threshold)
+    node_summary, node_counts_truncated, proteins_truncated = \
+        build_regulatory_partner_summary(edges, score_threshold)
+    notes = [
+        f"STRING returned {len(edges)} directed regulatory interaction partners above specified cutoff.",
+        *regulatory_score_notes(),
+    ]
+
+    if len(edges) <= 100:
+        interactions = [compact_regulatory_edge(edge, "evidence") for edge in edges]
+        node_summary["returned_interactions"] = len(interactions)
+        notes.append(
+            "The full returned regulatory interaction list is shown. STRING protein IDs and zero-valued evidence channels were omitted."
+        )
+    else:
+        interactions = [
+            compact_regulatory_edge(edge, "score_only")
+            for edge in edges[:PARTNER_INTERACTION_DETAIL_LIMIT]
+        ]
+        node_summary["returned_interactions"] = len(interactions)
+        notes.append(
+            "Evidence-channel details were removed because the number of returned regulatory relationships is above 100."
+        )
+
+    if len(edges) > len(interactions):
+        notes.append(
+            f"Only {len(interactions)} of {len(edges)} directed regulatory relationship rows are shown because the number of returned relationships is above {PARTNER_INTERACTION_DETAIL_LIMIT}. Subset the query to inspect detailed evidence for specific relationships."
+        )
+
+    if node_counts_truncated:
+        notes.append(
+            f"Interaction counts were truncated to the top {QUERY_SET_NODE_SUMMARY_LIMIT} nodes by degree."
+        )
+
+    if proteins_truncated:
+        notes.append(
+            f"The unique protein-name list was truncated to {PARTNER_UNIQUE_PROTEIN_LIMIT} proteins; exact overlap against a larger user gene set may require subsetting or a higher score cutoff."
+        )
+
+    return {
+        "notes": notes,
+        "node_summary": node_summary,
+        "interactions": interactions,
+    }
+
+
+def build_typed_partner_summary(pairs, score_threshold):
+    typed_summary, node_counts = build_typed_network_summary(pairs, score_threshold)
+    proteins = sorted({
+        protein["preferred_name"]
+        for pair in pairs
+        for protein in pair["proteins"]
+        if protein["preferred_name"]
+    })
+    node_counts_limited, node_counts_truncated = limit_list(
+        node_counts,
+        QUERY_SET_NODE_SUMMARY_LIMIT,
+    )
+    proteins_limited, proteins_truncated = limit_list(
+        proteins,
+        PARTNER_UNIQUE_PROTEIN_LIMIT,
+    )
+
+    node_summary = {
+        "return_mode": "compact_typed_interaction_list_with_limits",
+        "interactions_above_cutoff": len(pairs),
+        "typed_protein_pair_associations": typed_summary[
+            "typed_protein_pair_associations"
+        ],
+        "functional_associations": typed_summary["functional_associations"],
+        "physical_associations": typed_summary["physical_associations"],
+        "regulatory_relationships": typed_summary["regulatory_relationships"],
+        "directed_regulatory_relationships": typed_summary[
+            "directed_regulatory_relationships"
+        ],
+        "required_score": int(score_threshold * 1000),
+        "nodes_with_interactions": typed_summary["nodes_with_interactions"],
+        "functional_confidence_summary": typed_summary[
+            "functional_confidence_summary"
+        ],
+        "physical_confidence_summary": typed_summary[
+            "physical_confidence_summary"
+        ],
+        "regulatory_combined_confidence_summary": typed_summary[
+            "regulatory_combined_confidence_summary"
+        ],
+        "regulatory_directional_confidence_summary": typed_summary[
+            "regulatory_directional_confidence_summary"
+        ],
+        "regulatory_sign_counts": typed_summary["regulatory_sign_counts"],
+        "interaction_counts": node_counts_limited,
+        "returned_interaction_counts": len(node_counts_limited),
+        "proteins_in_returned_interactions": proteins_limited,
+        "returned_protein_names": len(proteins_limited),
+    }
+    return node_summary, node_counts_truncated, proteins_truncated
+
+
+def format_typed_interaction_partners(data, input_score_threshold=None):
+    if not isinstance(data, list):
+        return {
+            "notes": ["STRING did not return a list of typed interaction partners."],
+            "node_summary": {"return_mode": "unmodified"},
+            "interactions": data,
+        }
+
+    score_threshold = normalize_score_threshold(input_score_threshold)
+    pairs = build_typed_pairs(data, score_threshold)
+    node_summary, node_counts_truncated, proteins_truncated = \
+        build_typed_partner_summary(pairs, score_threshold)
+    notes = [
+        f"STRING returned {len(pairs)} typed protein-pair interaction partners above specified cutoff, including {node_summary['directed_regulatory_relationships']} directed regulatory relationships.",
+        *typed_score_notes(),
+    ]
+
+    if len(pairs) <= 100:
+        interactions = [compact_typed_pair(pair, "evidence") for pair in pairs]
+        node_summary["returned_interactions"] = len(interactions)
+        notes.append(
+            "The full returned typed interaction list is shown. STRING protein IDs and zero-valued evidence channels were omitted."
+        )
+    else:
+        interactions = [
+            compact_typed_pair(pair, "score_only")
+            for pair in pairs[:PARTNER_INTERACTION_DETAIL_LIMIT]
+        ]
+        node_summary["returned_interactions"] = len(interactions)
+        notes.append(
+            "Evidence-channel details were removed because the number of returned typed interaction records is above 100."
+        )
+
+    if len(pairs) > len(interactions):
+        notes.append(
+            f"Only {len(interactions)} of {len(pairs)} typed interaction records are shown because the number of returned interactions is above {PARTNER_INTERACTION_DETAIL_LIMIT}. Subset the query to inspect detailed evidence for specific interactions."
+        )
+
+    if node_counts_truncated:
+        notes.append(
+            f"Interaction counts were truncated to the top {QUERY_SET_NODE_SUMMARY_LIMIT} nodes by degree."
+        )
+
+    if proteins_truncated:
+        notes.append(
+            f"The unique protein-name list was truncated to {PARTNER_UNIQUE_PROTEIN_LIMIT} proteins; exact overlap against a larger user gene set may require subsetting or a higher score cutoff."
+        )
+
+    return {
+        "notes": notes,
+        "node_summary": node_summary,
+        "interactions": interactions,
+    }
+
+
+def format_interaction_partner_results(
+    data,
+    input_score_threshold,
+    network_type,
+    network_flavor,
+):
+    if network_type == "regulatory":
+        return format_regulatory_interaction_partners(data, input_score_threshold)
+    if network_type == "functional" and network_flavor == "typed":
+        return format_typed_interaction_partners(data, input_score_threshold)
+    return format_interaction_partners(data, input_score_threshold)
 
 
 def limit_list(values, max_items):

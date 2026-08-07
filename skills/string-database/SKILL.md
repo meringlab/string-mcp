@@ -23,17 +23,17 @@ Use the STRING MCP tools as the source of truth for protein interaction, network
 
 Use `string_resolve_proteins` to map gene symbols, UniProt IDs, or other protein identifiers to STRING metadata.
 
-Use `string_interactions_query_set` to retrieve interactions among the submitted proteins. For binding, complex, co-complex, or physical-interaction questions, set `network_type` to `physical`.
+Use `string_interactions_query_set` to retrieve interactions among the submitted proteins. Functional queries use the integrated `typed` network flavor by default. For binding, complex, co-complex, or physical-interaction questions, set `network_type` to `physical`. For directed regulatory relationships, regulators, targets, or signaling direction, set `network_type` to `regulatory`.
 
-Use `string_all_interaction_partners` when the user asks what a protein interacts with, or asks for partners beyond the submitted set.
+Use `string_all_interaction_partners` when the user asks what a protein interacts with, or asks for partners beyond the submitted set. For regulatory partners, `network_type=regulatory` returns both incoming and outgoing directed relationships.
 
-Use `string_visual_network` when the user asks for a network image. Use the same protein, species, score, extension, and network-type parameters as related network calls.
+Use `string_visual_network` when the user asks for a network image. Use the same protein, species, score, extension, network-type, and network-flavor parameters as related network calls.
 
-Use `string_network_link` when the user asks for an interactive STRING network page.
+Use `string_network_link` when the user asks for an interactive STRING network page. Use `network_type=regulatory` for a directed regulatory network.
 
 Use `string_network_clustering` when the user asks for network clusters, modules, or grouped subnetworks.
 
-Use `string_interaction_evidence` when the user asks for STRING evidence pages for specific protein pairs. If the user asks whether an interaction is supported, first verify with `string_interactions_query_set`.
+Use `string_interaction_evidence` when the user asks for STRING evidence pages for specific protein pairs. Use the matching `network_type` for physical or regulatory evidence pages. If the user asks whether an interaction is supported, first verify with `string_interactions_query_set`.
 
 Use `string_enrichment` for functional enrichment. Report FDR values for enrichment claims. For a single protein, remember that STRING expands the query before enrichment.
 
@@ -53,7 +53,7 @@ Use `string_help` for STRING usage, score interpretation, missing species, missi
 
 ## Analysis Workflow
 
-1. Identify proteins, species, analysis type, and whether the user wants functional or physical interactions.
+1. Identify proteins, species, analysis type, and whether the user wants functional, physical, or directed regulatory relationships.
 2. Resolve ambiguous identifiers or species before running biological analysis.
 3. Choose the smallest STRING tool call that directly answers the question.
 4. Keep related calls parameter-consistent, especially `proteins` or `identifiers`, `species`, `required_score`, `network_type`, and network expansion.
@@ -64,6 +64,8 @@ Use `string_help` for STRING usage, score interpretation, missing species, missi
 ## Common Patterns
 
 For "Does A interact with B?", call `string_interactions_query_set` with both proteins. If the interaction exists, include score details; call `string_interaction_evidence` when the user asks for supporting evidence or a STRING evidence link.
+
+For "Does A regulate B?" or a signaling-direction question, call `string_interactions_query_set` with `network_type=regulatory`. State the source-to-target direction exactly as returned. A positive, negative, or unknown sign applies only to that directed relationship; do not infer a sign when it is unknown.
 
 For "Show me the interaction network for these proteins", call `string_visual_network`. If the user also wants a clickable STRING page, call `string_network_link`. To discuss which interactions are present, call `string_interactions_query_set`.
 
