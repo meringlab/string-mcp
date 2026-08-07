@@ -31,7 +31,8 @@ For agentic STRING workflows, use the optional Agent Skill at [skills/string-dat
 
 - **Python** ≥ 3.10  
 - Dependencies (see `requirements.txt`):
-  - `fastmcp==2.10.6`
+  - `fastmcp==2.14.7`
+  - `mcp==1.29.0`
   - `httpx==0.28.1`
   - `pydantic==2.11.7`
 

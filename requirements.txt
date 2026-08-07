@@ -1,4 +1,4 @@
-fastmcp>=2.10,<3.0
+fastmcp==2.14.7
+mcp==1.29.0
 httpx>=0.28,<0.29
 pydantic>=2.11,<3.0
-
