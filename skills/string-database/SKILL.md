@@ -31,7 +31,7 @@ Use `string_visual_network` when the user asks for a network image. Use the same
 
 Use `string_network_link` when the user asks for an interactive STRING network page. Use `network_type=regulatory` for a directed regulatory network.
 
-Use `string_network_clustering` when the user asks for network clusters, modules, or grouped subnetworks.
+Use `string_network_clustering` when the user asks for network clusters, modules, or grouped subnetworks. It uses Leiden clustering with resolution 1.0 and faded inter-cluster edges by default; set the clustering options only when the user requests a different algorithm, granularity, or edge display.
 
 Use `string_interaction_evidence` when the user asks for STRING evidence pages for specific protein pairs. Use the matching `network_type` for physical or regulatory evidence pages. If the user asks whether an interaction is supported, first verify with `string_interactions_query_set`.
 
