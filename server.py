@@ -49,7 +49,8 @@ from string_help import HELP_TOPICS, HELP_TOPIC_ALIASES
 BinaryFlag = Literal[0, 1]
 NetworkType = Literal["functional", "physical", "regulatory"]
 NetworkFlavor = Literal["evidence", "confidence", "typed"]
-ClusteringAlgorithm = Literal["MCL", "kmeans"]
+ClusteringAlgorithm = Literal["leiden", "MCL", "kmeans"]
+ClusteringEdgeVisibility = Literal["faded", "dotted", "solid", "noshow"]
 EnrichmentImageCategory = Literal[
     "Process",
     "Function",
@@ -878,8 +879,9 @@ async def string_network_clustering(
     clustering_algorithm: Annotated[
         Optional[ClusteringAlgorithm],
         Field(description=(
-            "Optional. MCL identifies densely connected subnetworks based on connectivity flow. "
-            "kmeans partitions proteins into a fixed number of clusters. If omitted, the server uses MCL."
+            "Optional. Leiden identifies natural communities based on network connectivity and is the default. "
+            "MCL identifies densely connected subnetworks based on connectivity flow. "
+            "kmeans partitions proteins into a fixed number of clusters."
        ))
     ] = None,
     
@@ -887,11 +889,19 @@ async def string_network_clustering(
         Optional[float],
         Field(
             description=(
-                "Optional. Controls clustering granularity. For MCL: inflation parameter 1.0-10.0, default 3.0; "
-                "higher values produce more, smaller clusters. For kmeans: number of clusters, integer >=2, default 3."
+                "Optional. Controls clustering granularity. For Leiden: resolution parameter 0.1-10.0, default 1.0; "
+                "higher values produce more, smaller clusters. For MCL: inflation parameter 1.0-10.0, default 3.0. "
+                "For kmeans: number of clusters, integer >=2, default 3."
             ),
-            ge=1,
+            ge=0.1,
         )
+    ] = None,
+    inter_cluster_edge_visibility: Annotated[
+        Optional[ClusteringEdgeVisibility],
+        Field(description=(
+            "Optional. How to display edges between clusters: faded, dotted, solid, or noshow. "
+            "Defaults to faded."
+        ))
     ] = None,
     network_flavor: Annotated[
         Optional[NetworkFlavor],
@@ -913,12 +923,12 @@ async def string_network_clustering(
     Use the same parameters as in the network creation step to ensure consistency.
     If the network already contains disconnected subgraphs, the resulting number of clusters may differ from the requested value.
     
-    Dashed lines represent connections between clusters, while solid lines indicate interactions within clusters.
+    Inter-cluster edges are faded by default. Use `inter_cluster_edge_visibility` to select a different display style.
     
     Notes:
       - For small queries (≤5 proteins), the `required_score` parameter is automatically lowered to 0.
-      - If only a single cluster is produced, try increasing `required_score`, adjusting the inflation parameter,
-        or switching to `kmeans` for small, highly interconnected networks.
+      - If only a single cluster is produced, try increasing `required_score`, adjusting the clustering parameter,
+        or switching to a physical network for a sparser interaction map.
 
 
     """
@@ -941,40 +951,57 @@ async def string_network_clustering(
         params["hide_disconnected_nodes"] = hide_disconnected_nodes
 
 
-    # default
-    if not clustering_algorithm:
-        clustering_algorithm = 'MCL'
+    if clustering_algorithm is None:
+        clustering_algorithm = "leiden"
+    else:
+        normalized_algorithm = clustering_algorithm.lower()
+        algorithm_by_normalized_name = {
+            "kmeans": "kmeans",
+            "mcl": "MCL",
+            "leiden": "leiden",
+        }
+        clustering_algorithm = algorithm_by_normalized_name.get(
+            normalized_algorithm,
+            "leiden",
+        )
 
-    # fix casing
+    params["network_clustering_algorithm"] = clustering_algorithm
 
-    if clustering_algorithm.lower() == 'kmeans': clustering_algorithm = 'kmeans'
-    if clustering_algorithm.lower() == 'mcl': clustering_algorithm = 'MCL'
+    clustering_edge_visibility = inter_cluster_edge_visibility or "faded"
+    clustering_algorithm_parameter_suffix = {
+        "kmeans": "kmeans",
+        "MCL": "mcl",
+        "leiden": "leiden",
+    }[clustering_algorithm]
+    params[
+        f"network_clustering_edge_visibility_{clustering_algorithm_parameter_suffix}"
+    ] = clustering_edge_visibility
 
-    if clustering_algorithm not in ['MCL', 'kmeans']:
-        clustering_algorithm = 'MCL'
-
-    params['network_clustering_algorithm'] = clustering_algorithm
-
-    # parse parameters
-
-    if clustering_algorithm == 'kmeans':
-
+    if clustering_algorithm == "kmeans":
         try:
             clustering_parameter = float(int(clustering_parameter))
-        except Exception:
+        except (TypeError, ValueError):
             clustering_parameter = 3
 
-        params['network_clustering_parameter_kmeans'] = clustering_parameter
+        params["network_clustering_parameter_kmeans"] = clustering_parameter
 
-    if clustering_algorithm == 'MCL':
-
+    if clustering_algorithm == "MCL":
         try:
             clustering_parameter = float(clustering_parameter)
             clustering_parameter = max(1, min(10, clustering_parameter))
-        except Exception:
+        except (TypeError, ValueError):
             clustering_parameter = 3
 
-        params['network_clustering_parameter_mcl'] = clustering_parameter
+        params["network_clustering_parameter_mcl"] = clustering_parameter
+
+    if clustering_algorithm == "leiden":
+        try:
+            clustering_parameter = float(clustering_parameter)
+            clustering_parameter = max(0.1, min(10, clustering_parameter))
+        except (TypeError, ValueError):
+            clustering_parameter = 1.0
+
+        params["network_clustering_parameter_leiden"] = clustering_parameter
 
 
     if center_node_labels is not None:
@@ -2265,6 +2292,11 @@ def get_clustering_structure_note(clusters, clustering_algorithm):
     if clustering_algorithm == "MCL":
         tuning_hint = (
             "Try increasing `required_score`, increasing the MCL inflation parameter, "
+            "or switching to a physical network for a sparser interaction map."
+        )
+    elif clustering_algorithm == "leiden":
+        tuning_hint = (
+            "Try increasing `required_score`, increasing the Leiden resolution parameter, "
             "or switching to a physical network for a sparser interaction map."
         )
     else:
