@@ -335,8 +335,9 @@ async def string_resolve_proteins(
         Field(
             description=(
                 "Required. One or more input protein identifiers (gene symbols, UniProt IDs, etc.), "
-                "separated by carriage return (%0d). Example: TP53%0dSMO"
-            )
+                "separated by carriage return (%0d)."
+            ),
+            examples=["TP53%0dSMO"],
         )
     ],
     species: Annotated[
@@ -386,10 +387,10 @@ async def string_resolve_proteins(
 async def string_interactions_query_set(
     proteins: Annotated[
         str,
-        Field(description=(
-            "Required. One or more protein identifiers, separated by carriage return (%0d). "
-            "Example: SMO%0dTP53"
-        ))
+        Field(
+            description="Required. One or more protein identifiers, separated by carriage return (%0d).",
+            examples=["SMO%0dTP53"],
+        )
     ],
     species: Annotated[
         str,
@@ -571,10 +572,10 @@ async def string_interactions_query_set(
 async def string_all_interaction_partners(
     identifiers: Annotated[
         str,
-        Field(description=(
-            "Required. One or more protein identifiers, separated by carriage return (%0d). "
-            "Example: TP53%0dSMO"
-        ))
+        Field(
+            description="Required. One or more protein identifiers, separated by carriage return (%0d).",
+            examples=["TP53%0dSMO"],
+        )
     ],
     species: Annotated[
         str,
@@ -679,9 +680,13 @@ async def string_all_interaction_partners(
 async def string_visual_network(
     proteins: Annotated[
         str,
-        Field(description="Required. One or more protein IDs, optionally followed by one numeric value per protein. Example:\n"
-                  "PTEN 0.234\nSMO -3.445\n"
-                  "Use newline (%0d) between entries. Tabs and spaces are accepted as separators.")
+        Field(
+            description=(
+                "Required. One or more protein IDs, optionally followed by one numeric value per protein. "
+                "Use newline (%0d) between entries. Tabs and spaces are accepted as separators."
+            ),
+            examples=["PTEN 0.234\nSMO -3.445"],
+        )
     ],
     species: Annotated[
         str,
@@ -846,12 +851,14 @@ async def string_visual_network(
 async def string_network_clustering(
     proteins: Annotated[
         str,
-        Field(description=(
-            "Required. One or more protein identifiers (optionally with values). Example:\n"
-            "PTEN 0.234\nSMO -3.445\n"
-            "Separate entries with newline (%0d). "
-            "Numeric values (e.g. expression data) can be provided after identifiers."
-        ))
+        Field(
+            description=(
+                "Required. One or more protein identifiers (optionally with values). "
+                "Separate entries with newline (%0d). "
+                "Numeric values (e.g. expression data) can be provided after identifiers."
+            ),
+            examples=["PTEN 0.234\nSMO -3.445"],
+        )
     ],
     species: Annotated[
         str,
@@ -918,7 +925,7 @@ async def string_network_clustering(
 ) -> dict:
     """
     Performs **network clustering** on a STRING interaction network and returns a network image URL,
-    an interactive STRING network URL, and details about each detected cluster.
+    an interactive STRING network URL, and details about each detected cluster, including their colors.
     
     Use the same parameters as in the network creation step to ensure consistency.
     If the network already contains disconnected subgraphs, the resulting number of clusters may differ from the requested value.
@@ -1074,9 +1081,13 @@ async def string_network_clustering(
 async def string_network_link(
     proteins: Annotated[
         str,
-        Field(description="Required. One or more protein IDs, optionally followed by one numeric value per protein. Example:\n"
-                  "PTEN 0.234\nSMO -3.445\n"
-                  "Use newline (%0d) between entries. Tabs and spaces are accepted as separators.")
+        Field(
+            description=(
+                "Required. One or more protein IDs, optionally followed by one numeric value per protein. "
+                "Use newline (%0d) between entries. Tabs and spaces are accepted as separators."
+            ),
+            examples=["PTEN 0.234\nSMO -3.445"],
+        )
     ],
     species: Annotated[
         str,
@@ -1195,7 +1206,10 @@ async def string_network_link(
 async def string_homology(
     proteins: Annotated[
         str,
-        Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
+        Field(
+            description="Required. One or more protein identifiers, separated by %0d.",
+            examples=["SMO%0dTP53"],
+        )
     ],
     species: Annotated[
         str,
@@ -1311,7 +1325,10 @@ async def string_interaction_evidence(
 async def string_enrichment(
     proteins: Annotated[
         str,
-        Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
+        Field(
+            description="Required. One or more protein identifiers, separated by %0d.",
+            examples=["SMO%0dTP53"],
+        )
     ],
     species: Annotated[
         Optional[str],
@@ -1319,11 +1336,13 @@ async def string_enrichment(
     ] = None,
     expand_category: Annotated[
         Optional[str],
-        Field(description=(
-            "Optional. Return only this enrichment category with expanded term coverage and a larger per-term "
-            "gene-list cutoff. Use a category from metadata.category_summary, e.g. Process, KEGG, PMID, "
-            "NetworkNeighborAL, or Keyword."
-        ))
+        Field(
+            description=(
+                "Optional. Return only this enrichment category with expanded term coverage and a larger per-term "
+                "gene-list cutoff. Use a category from metadata.category_summary."
+            ),
+            examples=["Process", "KEGG", "PMID", "NetworkNeighborAL", "Keyword"],
+        )
     ] = None
 ) -> dict:
     """This tool retrieves functional enrichment for a set of proteins using STRING.
@@ -1400,7 +1419,10 @@ async def string_enrichment(
 async def string_functional_annotation(
     identifiers: Annotated[
         str,
-        Field(description="Separate multiple protein queries by %0d. e.g. SMO%0dTP53")
+        Field(
+            description="Separate multiple protein queries by %0d.",
+            examples=["SMO%0dTP53"],
+        )
     ],
     species: Annotated[
         str,
@@ -1451,7 +1473,10 @@ async def string_functional_annotation(
 async def string_enrichment_image_url(
     identifiers: Annotated[
         str,
-        Field(description="Required. Protein identifiers, separated by %0d. Example: SMO%0dTP53")
+        Field(
+            description="Required. Protein identifiers, separated by %0d.",
+            examples=["SMO%0dTP53"],
+        )
     ],
     species: Annotated[
         str,
@@ -1520,7 +1545,10 @@ async def string_enrichment_image_url(
 async def string_ppi_enrichment(
     identifiers: Annotated[
         str,
-        Field(description="Required. One or more protein identifiers, separated by %0d. Example: SMO%0dTP53")
+        Field(
+            description="Required. One or more protein identifiers, separated by %0d.",
+            examples=["SMO%0dTP53"],
+        )
     ],
     species: Annotated[
         str,
@@ -1575,10 +1603,13 @@ async def string_ppi_enrichment(
 async def string_proteins_for_term(
     term_text: Annotated[
         str,
-        Field(description=(
-            "Required. Functional term identifier (GO, KEGG, Reactome, etc.) "
-            "or descriptive free text (e.g. 'hsa05218', 'Melanoma', 'GO:0008543', 'Fibroblast growth factor')."
-        ))
+        Field(
+            description=(
+                "Required. Functional term identifier (GO, KEGG, Reactome, etc.) "
+                "or descriptive free text."
+            ),
+            examples=["hsa05218", "Melanoma", "GO:0008543", "Fibroblast growth factor"],
+        )
     ],
     species: Annotated[
         str,
@@ -1684,11 +1715,13 @@ async def string_sequence_search(
 async def string_query_species(
     species_text: Annotated[
         str,
-        Field(description=(
-            "Required. One species/clade search term or multiple NCBI taxon IDs separated by carriage return (%0d). "
-            "Examples: 'human', 'mouse', 'vertebrates', '511145', or '9598%0d10090'. "
-            "For multiple queries, use taxon IDs rather than free-text names."
-        ))
+        Field(
+            description=(
+                "Required. One species/clade search term or multiple NCBI taxon IDs separated by carriage return (%0d). "
+                "For multiple queries, use taxon IDs rather than free-text names."
+            ),
+            examples=["human", "mouse", "vertebrates", "511145", "9598%0d10090"],
+        )
     ],
 ) -> dict:
     """
@@ -1769,8 +1802,9 @@ async def string_create_file(
             description=(
                 "Required. Suggested output filename with a safe extension such as .tsv, .csv, .json, .md, or .txt. "
                 "Match content to the extension; prefer .tsv for reusable tabular STRING data. "
-                "Use a concise name that reflects the STRING analysis result, for example string-enrichment.tsv."
-            )
+                "Use a concise name that reflects the STRING analysis result."
+            ),
+            examples=["string-enrichment.tsv"],
         )
     ],
     content: Annotated[
