@@ -23,7 +23,7 @@ Use the STRING MCP tools as the source of truth for protein interaction, network
 
 Use `string_resolve_proteins` to map gene symbols, UniProt IDs, or other protein identifiers to STRING metadata.
 
-Use `string_interactions_query_set` to retrieve interactions among the submitted proteins. Functional queries use the integrated `typed` network flavor by default. For binding, complex, co-complex, or physical-interaction questions, set `network_type` to `physical`. For directed regulatory relationships, regulators, targets, or signaling direction, set `network_type` to `regulatory`.
+Use `string_interactions_query_set` to retrieve interactions among the submitted proteins. Functional queries use the integrated `typed` network flavor by default, which can include physical and directed regulatory attributes when STRING reports them. Verify a physical relationship from a positive `physical.association_confidence` and a directed regulatory relationship from a nonempty `regulatory.directions` list; do not infer either from a typed network image alone. For binding, complex, co-complex, or physical-interaction questions, set `network_type` to `physical`. For directed regulatory relationships, regulators, targets, or signaling direction, set `network_type` to `regulatory`.
 
 Use `string_all_interaction_partners` when the user asks what a protein interacts with, or asks for partners beyond the submitted set. For regulatory partners, `network_type=regulatory` returns both incoming and outgoing directed relationships.
 

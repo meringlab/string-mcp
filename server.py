@@ -114,14 +114,16 @@ timeout = float(config.get("timeout", 100))
 
 
 NETWORK_TYPE_DESCRIPTION = (
-    "Optional. Omit for the default functional network. Set physical for binding, complex, or co-complex "
-    "questions. Set regulatory for directed regulatory relationships between proteins."
+    "Omit for the default functional network. Its typed view can include physical and directed regulatory "
+    "attributes when STRING returns them; inspect `physical` and `regulatory.directions` before claiming those "
+    "edge types. Set physical for binding, complex, or co-complex questions. Set regulatory for directed "
+    "regulatory relationships between proteins."
 )
 NETWORK_FLAVOR_DESCRIPTION = (
-    "Optional. Defaults are typed for functional networks, evidence for physical networks, and confidence for "
-    "regulatory networks. Typed provides an integrated functional, physical, and regulatory overview and is "
-    "available only for functional networks. Set evidence or confidence only when the user requests that edge "
-    "display style."
+    "Defaults are typed for functional networks, evidence for physical networks, and confidence for "
+    "regulatory networks. Typed returns functional pairs with any physical and directed regulatory attributes "
+    "that STRING reports; it does not make every pair physical or regulatory. Typed is available only for "
+    "functional networks. Set evidence or confidence only when the user requests that edge display style."
 )
 NETWORK_DEFAULT_FLAVORS = {
     "functional": "typed",
@@ -131,6 +133,18 @@ NETWORK_DEFAULT_FLAVORS = {
 EXPANDED_NETWORK_NOTE = (
     "Internal guidance: This network was expanded where possible. Colored nodes denote input proteins and white nodes "
     "denote added proteins; use `string_interactions_query_set` with the same parameters to discuss relationships in this network."
+)
+NETWORK_CONTINUITY_NOTE = (
+    "Internal guidance — network continuity: Treat a generated network as the active analysis context. Follow-up "
+    "questions about nodes, edges, relationship types, directions, signs, evidence, or enrichment must inspect that "
+    "network unless the user explicitly requests a new network or view. Preserve its effective proteins, species, "
+    "extension, score cutoff, network_type, and network_flavor. Changing network_type recomputes the network and can "
+    "change its added proteins."
+)
+TYPED_NETWORK_NOTE = (
+    "Internal guidance: This is a functional network in typed flavor. It can contain functional, physical, and "
+    "directed regulatory edges; it is not a regulatory-only network. To report regulatory events in this network, "
+    "preserve the functional typed view and inspect `regulatory.directions`."
 )
 
 
@@ -334,7 +348,7 @@ async def string_resolve_proteins(
         str,
         Field(
             description=(
-                "Required. One or more input protein identifiers (gene symbols, UniProt IDs, etc.), "
+                "One or more input protein identifiers (gene symbols, UniProt IDs, etc.), "
                 "separated by carriage return (%0d)."
             ),
             examples=["TP53%0dSMO"],
@@ -344,7 +358,7 @@ async def string_resolve_proteins(
         str,
         Field(
             description=(
-                "Optional. NCBI taxonomy ID (e.g. 9606 for human) or STRING genome ID "
+                "NCBI taxonomy ID (e.g. 9606 for human) or STRING genome ID "
                 "(e.g. STRG0AXXXXX for uploaded genomes)."
             )
         )
@@ -353,8 +367,9 @@ async def string_resolve_proteins(
         Optional[Literal["0", "1"]],
         Field(
             description=(
-                "Optional. Include sequences when set to 1. Use only if the user requests sequence data."
-            )
+                "Include sequences. Use only if the user requests sequence data."
+            ),
+            examples=["0", "1"],
         )
     ] = None
 ) -> dict:
@@ -388,21 +403,21 @@ async def string_interactions_query_set(
     proteins: Annotated[
         str,
         Field(
-            description="Required. One or more protein identifiers, separated by carriage return (%0d).",
+            description="One or more protein identifiers, separated by carriage return (%0d).",
             examples=["SMO%0dTP53"],
         )
     ],
     species: Annotated[
         str,
         Field(description=(
-            "Optional. NCBI taxonomy ID (e.g. 9606 for human) or STRING genome ID "
+            "NCBI taxonomy ID (e.g. 9606 for human) or STRING genome ID "
             "(e.g. STRG0AXXXXX for uploaded genomes)."
         ))
     ] = None,
     required_score: Annotated[
         Optional[int],
         Field(
-            description="Optional. Minimum confidence score for an interaction. Omit unless a confidence threshold is requested or a broader/narrower threshold is needed.",
+            description="Minimum confidence score for an interaction. Omit unless a confidence threshold is requested or a broader/narrower threshold is needed.",
             ge=0,
             le=1000,
         )
@@ -419,7 +434,7 @@ async def string_interactions_query_set(
         Optional[int],
         Field(
             description=(
-                "Optional. Number of additional proteins to add to the network based on their "
+                "Number of additional proteins to add to the network based on their "
                 "connectivity. Default is 10 for a single protein query and 0 for multiple proteins. "
                 "Set only if the user asks to add, extend, include a neighborhood, or show connecting proteins."
             ),
@@ -573,21 +588,21 @@ async def string_all_interaction_partners(
     identifiers: Annotated[
         str,
         Field(
-            description="Required. One or more protein identifiers, separated by carriage return (%0d).",
+            description="One or more protein identifiers, separated by carriage return (%0d).",
             examples=["TP53%0dSMO"],
         )
     ],
     species: Annotated[
         str,
         Field(description=(
-            "Optional. NCBI taxonomy ID (e.g. 9606 for human) or STRING genome ID "
+            "NCBI taxonomy ID (e.g. 9606 for human) or STRING genome ID "
             "(e.g. STRG0AXXXXX for uploaded genomes). Only set when required."
         ))
     ] = None,
     required_score: Annotated[
         Optional[int],
         Field(
-            description="Optional. Minimum interaction score to include. Omit unless a confidence threshold is requested or a broader/narrower threshold is needed.",
+            description="Minimum interaction score to include. Omit unless a confidence threshold is requested or a broader/narrower threshold is needed.",
             ge=0,
             le=1000,
         )
@@ -682,7 +697,7 @@ async def string_visual_network(
         str,
         Field(
             description=(
-                "Required. One or more protein IDs, optionally followed by one numeric value per protein. "
+                "One or more protein IDs, optionally followed by one numeric value per protein. "
                 "Use newline (%0d) between entries. Tabs and spaces are accepted as separators."
             ),
             examples=["PTEN 0.234\nSMO -3.445"],
@@ -690,19 +705,19 @@ async def string_visual_network(
     ],
     species: Annotated[
         str,
-        Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX).")
+        Field(description="NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX).")
     ] = None,
     extend_network: Annotated[
         Optional[int],
         Field(
-            description="Optional. Add specified number of nodes to the network, based on their scores. Default: 0, or 10 for single protein queries.",
+            description="Add specified number of nodes to the network, based on their scores. Default: 0, or 10 for single protein queries.",
             ge=0,
         )
     ] = None,
     required_score: Annotated[
         Optional[int],
         Field(
-            description="Optional. Threshold of significance to include an interaction. Omit for STRING default filtering. Set only when a threshold is requested or a broader/narrower threshold is needed.",
+            description="Threshold of significance to include an interaction. Omit for STRING default filtering. Set only when a threshold is requested or a broader/narrower threshold is needed.",
             ge=0,
             le=1000,
         )
@@ -717,7 +732,10 @@ async def string_visual_network(
     ] = None,
     hide_disconnected_nodes: Annotated[
         Optional[BinaryFlag],
-        Field(description="Optional. Hide proteins not connected to any other protein when set to 1. Set only if the user asks to hide disconnected or unconnected proteins.")
+        Field(
+            description="Hide proteins not connected to any other protein. Set only if the user asks to hide disconnected or unconnected proteins.",
+            examples=[0, 1],
+        )
     ] = None,
     #show_query_node_labels: Annotated[
     #    Optional[BinaryFlag],
@@ -725,11 +743,17 @@ async def string_visual_network(
     #] = None,
     center_node_labels: Annotated[
         Optional[BinaryFlag],
-        Field(description="Optional. Center protein names on nodes when set to 1. Set only if the user asks to center labels.")
+        Field(
+            description="Center protein names on nodes. Set only if the user asks to center labels.",
+            examples=[0, 1],
+        )
     ] = None,
     do_not_show_structures: Annotated[
         Optional[BinaryFlag],
-        Field(description="Optional. Remove small protein structure previews from inside the node bubbles when set to 1. Set only if the user asks to remove or hide structure previews.")
+        Field(
+            description="Remove small protein structure previews from inside the node bubbles. Set only if the user asks to remove or hide structure previews.",
+            examples=[0, 1],
+        )
     ] = None,
  
     #custom_label_font_size: Annotated[
@@ -818,6 +842,14 @@ async def string_visual_network(
         if params.get("add_white_nodes"):
             notes.append(EXPANDED_NETWORK_NOTE)
 
+        notes.append(NETWORK_CONTINUITY_NOTE)
+
+        if (
+            effective_network_type == "functional"
+            and effective_network_flavor == "typed"
+        ):
+            notes.append(TYPED_NETWORK_NOTE)
+
         if add_score_note:
             notes.append("For small queries, the `required_score` parameter was lowered to 0.")
         notes.append("Internal guidance: do not repeat this note to the user. The user can inspect the generated image, "
@@ -853,7 +885,7 @@ async def string_network_clustering(
         str,
         Field(
             description=(
-                "Required. One or more protein identifiers (optionally with values). "
+                "One or more protein identifiers (optionally with values). "
                 "Separate entries with newline (%0d). "
                 "Numeric values (e.g. expression data) can be provided after identifiers."
             ),
@@ -862,19 +894,19 @@ async def string_network_clustering(
     ],
     species: Annotated[
         str,
-        Field(description="Required. NCBI/STRING taxonomy ID (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
+        Field(description="NCBI/STRING taxonomy ID (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
     ] = None,
     extend_network: Annotated[
         Optional[int],
         Field(
-            description="Optional. Add specified number of additional nodes to the network based on their interaction scores. Default: 0, or 10 for single-protein queries.",
+            description="Add specified number of additional nodes to the network based on their interaction scores. Default: 0, or 10 for single-protein queries.",
             ge=0,
         )
     ] = None,
     required_score: Annotated[
         Optional[int],
         Field(
-            description="Optional. Minimum interaction confidence score. Omit for STRING default filtering. Set only when a threshold is requested or a broader/narrower threshold is needed.",
+            description="Minimum interaction confidence score. Omit for STRING default filtering. Set only when a threshold is requested or a broader/narrower threshold is needed.",
             ge=0,
             le=1000,
         )
@@ -886,7 +918,7 @@ async def string_network_clustering(
     clustering_algorithm: Annotated[
         Optional[ClusteringAlgorithm],
         Field(description=(
-            "Optional. Leiden identifies natural communities based on network connectivity and is the default. "
+            "Leiden identifies natural communities based on network connectivity and is the default. "
             "MCL identifies densely connected subnetworks based on connectivity flow. "
             "kmeans partitions proteins into a fixed number of clusters."
        ))
@@ -896,7 +928,7 @@ async def string_network_clustering(
         Optional[float],
         Field(
             description=(
-                "Optional. Controls clustering granularity. For Leiden: resolution parameter 0.1-10.0, default 1.0; "
+                "Controls clustering granularity. For Leiden: resolution parameter 0.1-10.0, default 1.0; "
                 "higher values produce more, smaller clusters. For MCL: inflation parameter 1.0-10.0, default 3.0. "
                 "For kmeans: number of clusters, integer >=2, default 3."
             ),
@@ -906,7 +938,7 @@ async def string_network_clustering(
     inter_cluster_edge_visibility: Annotated[
         Optional[ClusteringEdgeVisibility],
         Field(description=(
-            "Optional. How to display edges between clusters: faded, dotted, solid, or noshow. "
+            "How to display edges between clusters: faded, dotted, solid, or noshow. "
             "Defaults to faded."
         ))
     ] = None,
@@ -916,16 +948,24 @@ async def string_network_clustering(
     ] = None,
     hide_disconnected_nodes: Annotated[
         Optional[BinaryFlag],
-        Field(description="Optional. Hide unconnected nodes when set to 1. Set only if the user asks to hide disconnected or unconnected proteins.")
+        Field(
+            description="Hide unconnected nodes. Set only if the user asks to hide disconnected or unconnected proteins.",
+            examples=[0, 1],
+        )
     ] = None,
     center_node_labels: Annotated[
         Optional[BinaryFlag],
-        Field(description="Optional. Center protein labels on nodes when set to 1. Set only if the user asks to center labels.")
+        Field(
+            description="Center protein labels on nodes. Set only if the user asks to center labels.",
+            examples=[0, 1],
+        )
     ] = None,
 ) -> dict:
     """
     Performs **network clustering** on a STRING interaction network and returns a network image URL,
-    an interactive STRING network URL, and details about each detected cluster, including their colors.
+    an interactive STRING network URL, and details about each detected cluster.
+
+    Provide a table with each detected cluster’s color, STRING-derived functional description, and any returned features that distinguish it from the others.
     
     Use the same parameters as in the network creation step to ensure consistency.
     If the network already contains disconnected subgraphs, the resulting number of clusters may differ from the requested value.
@@ -1083,7 +1123,7 @@ async def string_network_link(
         str,
         Field(
             description=(
-                "Required. One or more protein IDs, optionally followed by one numeric value per protein. "
+                "One or more protein IDs, optionally followed by one numeric value per protein. "
                 "Use newline (%0d) between entries. Tabs and spaces are accepted as separators."
             ),
             examples=["PTEN 0.234\nSMO -3.445"],
@@ -1091,15 +1131,15 @@ async def string_network_link(
     ],
     species: Annotated[
         str,
-        Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX).")
+        Field(description="NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX).")
     ] = None,
     extend_network: Annotated[
         Optional[int],
-        Field(description="Optional. Add white nodes to network, based on scores. Default: 0.", ge=0)
+        Field(description="Add white nodes to network, based on scores. Default: 0.", ge=0)
     ] = None,
     required_score: Annotated[
         Optional[int],
-        Field(description="Optional. Threshold of significance to include an interaction. Omit for STRING default filtering. Set only when a threshold is requested or a broader/narrower threshold is needed.", ge=0, le=1000)
+        Field(description="Threshold of significance to include an interaction. Omit for STRING default filtering. Set only when a threshold is requested or a broader/narrower threshold is needed.", ge=0, le=1000)
     ] = None,
     network_flavor: Annotated[
         Optional[NetworkFlavor],
@@ -1111,7 +1151,10 @@ async def string_network_link(
     ] = None,
     hide_disconnected_nodes: Annotated[
         Optional[BinaryFlag],
-        Field(description="Optional. Hide proteins not connected to any other protein when set to 1. Set only if the user asks to hide disconnected or unconnected proteins.")
+        Field(
+            description="Hide proteins not connected to any other protein. Set only if the user asks to hide disconnected or unconnected proteins.",
+            examples=[0, 1],
+        )
     ] = None,
     #show_query_node_labels: Annotated[
     #    Optional[BinaryFlag],
@@ -1207,17 +1250,17 @@ async def string_homology(
     proteins: Annotated[
         str,
         Field(
-            description="Required. One or more protein identifiers, separated by %0d.",
+            description="One or more protein identifiers, separated by %0d.",
             examples=["SMO%0dTP53"],
         )
     ],
     species: Annotated[
         str,
-        Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
+        Field(description="NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
     ] = None,
     species_b: Annotated[
         Optional[str],
-        Field(description="Optional. One or more NCBI taxon IDs for target species, separated by comma (e.g. 9606,7227,4932 for human, fly, and yeast).")
+        Field(description="One or more NCBI taxon IDs for target species, separated by comma (e.g. 9606,7227,4932 for human, fly, and yeast).")
     ] = None
 ) -> dict:
     """
@@ -1255,20 +1298,20 @@ async def string_homology(
 async def string_interaction_evidence(
     identifier_a: Annotated[
         str,
-        Field(description="Required. Protein A identifier.")
+        Field(description="Protein A identifier.")
     ],
     identifiers_b: Annotated[
         str,
-        Field(description="Required. One or more protein B identifiers, separated by %0d.")
+        Field(description="One or more protein B identifiers, separated by %0d.")
     ],
     species: Annotated[
         str,
-        Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
+        Field(description="NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
     ] = None,
     network_type: Annotated[
         Optional[NetworkType],
         Field(description=(
-            "Optional. Set physical for physical-interaction evidence or regulatory for directed regulatory evidence. "
+            "Set physical for physical-interaction evidence or regulatory for directed regulatory evidence. "
             "Omit for the functional interaction evidence page."
         ))
     ] = None,
@@ -1326,19 +1369,19 @@ async def string_enrichment(
     proteins: Annotated[
         str,
         Field(
-            description="Required. One or more protein identifiers, separated by %0d.",
+            description="One or more protein identifiers, separated by %0d.",
             examples=["SMO%0dTP53"],
         )
     ],
     species: Annotated[
         Optional[str],
-        Field(description="Optional. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX). Use only when required.")
+        Field(description="NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX). Use only when required.")
     ] = None,
     expand_category: Annotated[
         Optional[str],
         Field(
             description=(
-                "Optional. Return only this enrichment category with expanded term coverage and a larger per-term "
+                "Return only this enrichment category with expanded term coverage and a larger per-term "
                 "gene-list cutoff. Use a category from metadata.category_summary."
             ),
             examples=["Process", "KEGG", "PMID", "NetworkNeighborAL", "Keyword"],
@@ -1369,6 +1412,8 @@ async def string_enrichment(
       - preferredNames_omitted: True when the gene list was omitted instead of showing a misleading partial list
       - p_value: Raw p-value
       - fdr: False Discovery Rate (B-H corrected p-value)
+      - strength: Enrichment effect size, calculated as log10(observed genes / expected genes)
+      - signal: Balanced enrichment-ranking metric combining the observed/expected ratio and -log(FDR)
       - description: Description of the enriched term
 
     Response metadata:
@@ -1378,7 +1423,7 @@ async def string_enrichment(
         where `truncated` is true or where the user wants deeper category-specific detail.
       - truncated_categories / omitted_categories: Categories with terms not shown in the current response.
     """
-    params = {"identifiers": proteins}
+    params = {"identifiers": proteins, "add_signal": 1}
     if species is not None:
         params["species"] = species
 
@@ -1426,12 +1471,12 @@ async def string_functional_annotation(
     ],
     species: Annotated[
         str,
-        Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
+        Field(description="NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
     ] = None,
     detail_for_term: Annotated[
         Optional[str],
         Field(description=(
-            "Optional. Exact functional term ID to return with the full list of matching input proteins. "
+            "Exact functional term ID to return with the full list of matching input proteins. "
             "Use this when a previous result says a protein list was shortened, omitted, or replaced with 'many'."
         ))
     ] = None,
@@ -1474,38 +1519,38 @@ async def string_enrichment_image_url(
     identifiers: Annotated[
         str,
         Field(
-            description="Required. Protein identifiers, separated by %0d.",
+            description="Protein identifiers, separated by %0d.",
             examples=["SMO%0dTP53"],
         )
     ],
     species: Annotated[
         str,
-        Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX).")
+        Field(description="NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX).")
     ] = None,
     category: Annotated[
         Optional[EnrichmentImageCategory],
         Field(
             description=(
-                "Optional. Term category for enrichment. If omitted, STRING uses Process. "
+                "Term category for enrichment. If omitted, STRING uses Process. "
                 "Use Process/Function/Component for GO, KEGG for KEGG pathways, RCTM for Reactome, and PMID for publications."
             )
         )
     ] = None,
     group_by_similarity: Annotated[
         Optional[float],
-        Field(description="Optional. Group similar terms on the plot. Default: no grouping.", ge=0.1, le=1)
+        Field(description="Group similar terms on the plot. Default: no grouping.", ge=0.1, le=1)
     ] = None,
     color_palette: Annotated[
         Optional[EnrichmentImageColorPalette],
-        Field(description="Optional. Color palette for FDR. If omitted, STRING uses mint_blue.")
+        Field(description="Color palette for FDR. If omitted, STRING uses mint_blue.")
     ] = None,
     number_of_terms_shown: Annotated[
         Optional[int],
-        Field(description="Optional. Max number of terms shown on plot. Default: 10.", ge=1)
+        Field(description="Max number of terms shown on plot. Default: 10.", ge=1)
     ] = None,
     x_axis: Annotated[
         Optional[EnrichmentImageXAxis],
-        Field(description="Optional. X-axis variable/order. If omitted, STRING uses signal.")
+        Field(description="X-axis variable/order. If omitted, STRING uses signal.")
     ] = None
 ) -> dict:
     """Retrieves the STRING enrichment figure image *URL* for a set of proteins.
@@ -1546,18 +1591,18 @@ async def string_ppi_enrichment(
     identifiers: Annotated[
         str,
         Field(
-            description="Required. One or more protein identifiers, separated by %0d.",
+            description="One or more protein identifiers, separated by %0d.",
             examples=["SMO%0dTP53"],
         )
     ],
     species: Annotated[
         str,
-        Field(description="Required. NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
+        Field(description="NCBI/STRING taxon (e.g. 9606 for human, or STRG0AXXXXX for uploaded genomes).")
     ] = None,
     required_score: Annotated[
         Optional[int],
         Field(
-            description="Optional. Minimum interaction confidence score. Omit unless a confidence threshold is requested or a broader/narrower threshold is needed.",
+            description="Minimum interaction confidence score. Omit unless a confidence threshold is requested or a broader/narrower threshold is needed.",
             ge=0,
             le=1000,
         )
@@ -1605,7 +1650,7 @@ async def string_proteins_for_term(
         str,
         Field(
             description=(
-                "Required. Functional term identifier (GO, KEGG, Reactome, etc.) "
+                "Functional term identifier (GO, KEGG, Reactome, etc.) "
                 "or descriptive free text."
             ),
             examples=["hsa05218", "Melanoma", "GO:0008543", "Fibroblast growth factor"],
@@ -1623,7 +1668,7 @@ async def string_proteins_for_term(
     ] = "9606",
     detail_for_term: Annotated[
         Optional[str],
-        Field(description="Optional. Exact term ID to return as one full protein-name list.")
+        Field(description="Exact term ID to return as one full protein-name list.")
     ] = None,
 ) -> dict:
     """
@@ -1680,7 +1725,7 @@ async def string_sequence_search(
         str,
         Field(
             description=(
-                "Required. NCBI or STRING taxonomy ID. You can query with a clade or species. "
+                "NCBI or STRING taxonomy ID. You can query with a clade or species. "
                 "eg.g 2 for bacteria, 7742 for vertebrates, 511145 for E. coli"
             )
         ),
@@ -1717,7 +1762,7 @@ async def string_query_species(
         str,
         Field(
             description=(
-                "Required. One species/clade search term or multiple NCBI taxon IDs separated by carriage return (%0d). "
+                "One species/clade search term or multiple NCBI taxon IDs separated by carriage return (%0d). "
                 "For multiple queries, use taxon IDs rather than free-text names."
             ),
             examples=["human", "mouse", "vertebrates", "511145", "9598%0d10090"],
@@ -1800,7 +1845,7 @@ async def string_create_file(
         str,
         Field(
             description=(
-                "Required. Suggested output filename with a safe extension such as .tsv, .csv, .json, .md, or .txt. "
+                "Suggested output filename with a safe extension such as .tsv, .csv, .json, .md, or .txt. "
                 "Match content to the extension; prefer .tsv for reusable tabular STRING data. "
                 "Use a concise name that reflects the STRING analysis result."
             ),
@@ -1811,7 +1856,7 @@ async def string_create_file(
         str,
         Field(
             description=(
-                "Required STRING-derived file content. For .tsv/.csv: one rectangular table, one header row, "
+                "STRING-derived file content. For .tsv/.csv: one rectangular table, one header row, "
                 "matching delimiter, no Markdown/prose/repeated headers/multiple tables. "
                 "Use one row per entity, edge, cluster member, annotation, or enrichment term. "
                 "Use bare numeric scores/FDR/p-values; put interpretation and caveats in chat or .md/.txt."
@@ -1891,7 +1936,7 @@ async def string_help(
         Optional[HelpTopic],
         Field(
             description=(
-                "Optional. Help topic to display. If omitted, returns the available topics."
+                "Help topic to display. If omitted, returns the available topics."
             )
         )
     ] = None,
@@ -1903,6 +1948,7 @@ async def string_help(
       - What is STRING is or how to use the tool (how_to_use_string, cytoscape)
       - functionality not available via MCP tools (e.g. GSEA or large datasets).
       - meaning of network edges and their visual encoding (network_edge_legend)
+      - interpretation of enrichment strength and signal (enrichment_scores)
     """
     if topic is None:
         return {"topics": list(HELP_TOPICS.keys())}
@@ -2473,8 +2519,7 @@ def normalize_regulatory_sign(sign):
 
 
 def build_regulatory_edge(raw_row):
-    combined_confidence = parse_confidence_score(raw_row.get("combined_score"))
-    directional_confidence = parse_confidence_score(raw_row.get("directional_score"))
+    directed_confidence = parse_confidence_score(raw_row.get("combined_score"))
 
     return {
         "source_preferred_name": raw_row.get("source_preferred_name"),
@@ -2482,8 +2527,11 @@ def build_regulatory_edge(raw_row):
         "source_string_id": raw_row.get("source_string_id"),
         "target_string_id": raw_row.get("target_string_id"),
         "ncbi_taxon_id": raw_row.get("ncbiTaxonId"),
-        "regulatory_combined_confidence": combined_confidence,
-        "regulatory_directional_confidence": directional_confidence,
+        # The regulatory endpoint returns one source-to-target row. Its
+        # combined_score is the confidence of that directed relationship;
+        # there is no separate directional_score field.
+        "regulatory_combined_confidence": directed_confidence,
+        "regulatory_directional_confidence": directed_confidence,
         "sign": normalize_regulatory_sign(raw_row.get("sign")),
         "evidence": collect_nonzero_evidence(raw_row, REGULATORY_EVIDENCE_CHANNELS),
     }
@@ -2647,8 +2695,8 @@ def build_regulatory_network_summary(edges, score_threshold):
 
 def regulatory_score_notes():
     return [
-        "`regulatory_combined_confidence` is the confidence that a regulatory relationship exists for the protein pair, without selecting a direction.",
-        "`regulatory_directional_confidence` is the confidence that the stated source regulates the stated target. The `required_score` cut-off filters protein pairs by regulatory combined confidence.",
+        "Each regulatory row is a source-to-target relationship. STRING's `combined_score` is its confidence, returned in both `regulatory_combined_confidence` and `regulatory_directional_confidence` for compatibility.",
+        "The `required_score` cut-off filters these directed regulatory relationships by that confidence.",
     ]
 
 
@@ -2798,7 +2846,12 @@ def build_typed_pairs(data, score_threshold):
             raw_row.get("regulatory_combined_score")
         )
         directional_confidence = parse_confidence_score(
-            raw_row.get("directional_regulatory_combined_score"))
+            raw_row.get("directional_regulatory_combined_score")
+        )
+        if directional_confidence is None:
+            # Typed rows use regulatory_combined_score for the directed
+            # relationship represented by preferredName_A -> preferredName_B.
+            directional_confidence = combined_confidence
 
         if combined_confidence is not None or directional_confidence is not None:
             regulatory_layer = pair["regulatory"]
@@ -2968,12 +3021,17 @@ def build_typed_network_summary(pairs, score_threshold):
         if pair["functional"] is not None:
             functional_scores.append(pair["functional"]["association_confidence"])
         if pair["physical"] is not None:
-            physical_scores.append(pair["physical"]["association_confidence"])
+            physical_confidence = pair["physical"]["association_confidence"]
+            if physical_confidence > 0:
+                physical_scores.append(physical_confidence)
 
         regulatory_layer = pair["regulatory"]
         if regulatory_layer is None:
             continue
-        if regulatory_layer["combined_confidence"] is not None:
+        if (
+            regulatory_layer["combined_confidence"] is not None
+            and regulatory_layer["combined_confidence"] > 0
+        ):
             regulatory_combined_scores.append(
                 regulatory_layer["combined_confidence"]
             )
@@ -3011,8 +3069,8 @@ def build_typed_network_summary(pairs, score_threshold):
 def typed_score_notes():
     return [
         "Each typed record represents one protein pair. Functional and physical confidences apply to the pair.",
-        "Within `regulatory`, `combined_confidence` is the confidence that a regulatory relationship exists for the protein pair, without selecting a direction. Each entry in `directions` gives the confidence and sign for its stated source-to-target regulatory relationship.",
-        "For typed functional networks, the `required_score` cut-off applies to the functional association confidence used to select the network. Regulatory combined and directional confidences are returned as additional typed annotations.",
+        "Report a physical relationship only when `physical.association_confidence` is positive. Report a regulatory relationship only when `regulatory.directions` is nonempty; each entry is source-to-target.",
+        "For typed functional networks, `required_score` selects functional associations. Regulatory confidence is returned as an additional annotation for its directed source-to-target relationship.",
     ]
 
 
