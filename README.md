@@ -31,7 +31,8 @@ For agentic workflows, use the optional agent skill at [skills/string-database/S
 
 - **Python** ≥ 3.10  
 - Dependencies (see `requirements.txt`):
-  - `fastmcp==2.10.6`
+  - `fastmcp==2.14.7`
+  - `mcp==1.29.0`
   - `httpx==0.28.1`
   - `pydantic==2.11.7`
 
