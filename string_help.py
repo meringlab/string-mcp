@@ -9,6 +9,23 @@ HELP_TOPICS = {
         "and evaluates your experiment against a broad set of functional categories. "
         "Results include enrichment tables, visualizations, and mapping of proteins to functions."
     ),
+    "enrichment_scores": (
+        "**Understanding STRING enrichment statistics**:\n\n"
+        "- **number_of_genes** is the number of input proteins annotated with a term. "
+        "**number_of_genes_in_background** is the number of background proteins annotated with that term.\n"
+        "- **Strength** is the enrichment effect size: `log10(observed / expected)`, where *observed* is "
+        "the number of input proteins annotated with the term and *expected* is the corresponding number "
+        "in a random protein set of the same size. For example, strength 1 means tenfold more proteins than "
+        "expected; strength 2 means 100-fold more.\n"
+        "- **p_value** is the uncorrected enrichment p-value. **fdr** is the Benjamini–Hochberg corrected "
+        "p-value, and is the value to use when assessing statistical significance.\n"
+        "- **Signal** is a ranking metric: the weighted harmonic mean of the observed/expected ratio and "
+        "`-log(FDR)`. It balances effect size with statistical significance, helping prioritize terms that "
+        "are both strongly enriched and statistically reliable. Higher values indicate higher-priority "
+        "enrichment terms; signal is not an additional significance test.\n\n"
+        "Explain statistical significance with FDR, enrichment magnitude with strength, and overall term "
+        "priority with signal."
+    ),
     "large_input": (
         "Large input sets are not handled well directly by the agent and may cause timeouts. "
         "Please direct the user to the STRING web interface instead:\n\n"
@@ -178,4 +195,6 @@ HELP_TOPICS = {
 
 HELP_TOPIC_ALIASES = {
     "line_colors": "network_edge_legend",
+    "enrichment": "enrichment_scores",
+    "signal_strength": "enrichment_scores",
 }
