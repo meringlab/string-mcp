@@ -68,6 +68,14 @@ pip install -r requirements.txt
 python server.py
 ```
 
+To serve over standard input/output instead of HTTP, for example when a local MCP client starts the server itself:
+
+```
+python server.py --stdio
+```
+
+The stdio mode also reads `config/server.config` for the STRING API endpoint.
+
 ## Testing
 
    ```bash

@@ -14,8 +14,10 @@ Configuration:
 
 Run:
   python server.py
+  python server.py --stdio
 
-The server listens on the configured port and serves tools via streamable-http transport.
+By default, the server listens on the configured port and serves tools via streamable-http transport.
+With --stdio, it serves tools over standard input/output for clients that start the server themselves.
 
 Requirements:
 
@@ -34,6 +36,7 @@ import sys
 import json
 import time
 import httpx
+import argparse
 import asyncio
 import traceback
 
@@ -224,23 +227,8 @@ if 'verbosity' in config:
 async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
     """
     POST form data to a STRING API endpoint and return JSON.
-    Emits periodic 'ping' SSE events to keep upstream connections alive (e.g. Cloudflare).
     """
     params = data
-    ping_interval = 25  # seconds between pings
-
-    async def _ping_loop(done_event: asyncio.Event):
-        try:
-            while not done_event.is_set():
-                await asyncio.sleep(ping_interval)
-                if not done_event.is_set():
-                    print(json.dumps({"type": "ping", "message": "waiting..."}), flush=True)
-                    print("[_post_json] ping (still waiting for response)", file=sys.stderr, flush=True)
-        except asyncio.CancelledError:
-            pass
-
-    done_event = asyncio.Event()
-    ping_task = asyncio.create_task(_ping_loop(done_event))
 
     try:
         response = await client.post(endpoint, data=params)
@@ -335,11 +323,6 @@ async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
             f"[handled] Returned payload: {json.dumps(error_payload, ensure_ascii=False)}\n"
         )
         return error_payload
-
-    finally:
-        # stop the ping loop cleanly
-        done_event.set()
-        ping_task.cancel()
 
 
 mcp = FastMCP(
@@ -3871,10 +3854,21 @@ def log_call(endpoint, params):
 # ---- MCP server runner ----
 
 if __name__ == "__main__":
-    mcp.run(
-        transport="streamable-http",
-        host="0.0.0.0",
-        port=server_port,
-        log_level="info",
-        stateless_http=True,
+    argument_parser = argparse.ArgumentParser(description="Run the STRING MCP server.")
+    argument_parser.add_argument(
+        "--stdio",
+        action="store_true",
+        help="Serve over standard input/output instead of streamable HTTP.",
     )
+    command_line_arguments = argument_parser.parse_args()
+
+    if command_line_arguments.stdio:
+        mcp.run(transport="stdio")
+    else:
+        mcp.run(
+            transport="streamable-http",
+            host="0.0.0.0",
+            port=server_port,
+            log_level="info",
+            stateless_http=True,
+        )
