@@ -1,6 +1,6 @@
 # STRING MCP Server
 
-[![MCP Queen operational grade](https://mcpqueen.com/badge/org.string-db/string-mcp.svg)](https://mcpqueen.com/s/org.string-db/string-mcp)
+[![MCP Queen operational grade](https://mcpqueen.com/badge/org.string-db/string-mcp.svg)](https://mcpqueen.com/s/org.string-db/string-mcp) [![Glama score](https://glama.ai/mcp/servers/meringlab/string-mcp/badges/score.svg)](https://glama.ai/mcp/servers/meringlab/string-mcp)
 
 Exposes [STRING database](https://string-db.org) functionality as a **Model Context Protocol (MCP)** server.  
 
