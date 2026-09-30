@@ -46,6 +46,7 @@ from typing import Annotated, Literal, Optional
 
 from pydantic import Field
 from fastmcp import FastMCP
+from mcp.types import Icon
 
 from string_help import HELP_TOPICS, HELP_TOPIC_ALIASES
 
@@ -327,6 +328,9 @@ async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
 
 mcp = FastMCP(
     name="STRING Database MCP Server",
+    icons=[
+        Icon(src="https://mcp.string-db.org/favicon.png", mimeType="image/png", sizes=["512x512"]),
+    ],
 )
 
 @mcp.tool(title="STRING: Resolves protein identifiers to metadata")
