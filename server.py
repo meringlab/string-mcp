@@ -64,6 +64,8 @@ EnrichmentImageCategory = Literal[
     "WPO",
     "ZPO",
     "FYPO",
+    "GWAS",
+    "Hallmark",
     "Pfam",
     "SMART",
     "InterPro",
@@ -75,8 +77,10 @@ EnrichmentImageCategory = Literal[
     "WikiPathways",
 ]
 EnrichmentImageXAxis = Literal["signal", "strength", "FDR", "gene_count"]
+EnrichmentImageGraphType = Literal["dotplot", "barplot"]
 EnrichmentImageColorPalette = Literal[
     "mint_blue",
+    "red_blue",
     "lime_emerald",
     "green_blue",
     "peach_purple",
@@ -622,7 +626,7 @@ async def string_all_interaction_partners(
     This tool returns all known interactions between your query protein(s) and **any other proteins in the STRING database**.
     
     - Use this when asking **“What does TP53 interact with?”**
-    - It differs from the `network` tool, which only shows interactions **within the input set** or a limited extension of it.
+    - It differs from `string_interactions_query_set`, which only shows interactions **within the input set** or a limited extension of it.
 
     You can filter for strong interactions using `required_score`.
 
@@ -1538,7 +1542,14 @@ async def string_enrichment_image_url(
     ] = None,
     group_by_similarity: Annotated[
         Optional[float],
-        Field(description="Group similar terms on the plot. Default: no grouping.", ge=0.1, le=1)
+        Field(
+            description=(
+                "Visually groups terms based on term similarity. Default: 0.8. "
+                "Details: string_help topic 'enrichment_grouping'."
+            ),
+            ge=0.1,
+            le=1,
+        )
     ] = None,
     color_palette: Annotated[
         Optional[EnrichmentImageColorPalette],
@@ -1550,10 +1561,18 @@ async def string_enrichment_image_url(
     ] = None,
     x_axis: Annotated[
         Optional[EnrichmentImageXAxis],
-        Field(description="X-axis variable/order. If omitted, STRING uses signal.")
+        Field(description="Value shown on the X-axis; also selects and orders the terms. If omitted, STRING uses signal.")
+    ] = None,
+    graph_type: Annotated[
+        Optional[EnrichmentImageGraphType],
+        Field(description="Plot type: dotplot or barplot (horizontal bar chart). If omitted, STRING uses dotplot.")
     ] = None
 ) -> dict:
-    """Retrieves the STRING enrichment figure image *URL* for a set of proteins.
+    """
+    Retrieves a STRING enrichment figure (image URL) for a set of proteins. For the enriched terms and FDR values, use `string_enrichment`.
+
+    - Each figure shows a single enrichment category; call again with another `category` to show a different one.
+    - Use the same proteins and species as the network and enrichment results already shown to the user, so the figure matches them.
     """
     params = {"identifiers": identifiers}
     if species is not None:
@@ -1568,6 +1587,8 @@ async def string_enrichment_image_url(
         params["number_of_term_shown"] = number_of_terms_shown
     if x_axis is not None:
         params["x_axis"] = x_axis
+    if graph_type is not None:
+        params["graph_type"] = graph_type
 
     endpoint = f"/api/json/enrichment_image_url"
 
@@ -1581,7 +1602,11 @@ async def string_enrichment_image_url(
             "If a valid URL is present in the response, embed it as markdown in the assistant message. "
             "If no valid URL is returned, do not embed or display any link."
         )
- 
+        notes.append(
+            "The figure's contents are not visible to the agent. Before stating which terms are enriched or how "
+            "significant they are, confirm them with `string_enrichment` using the same proteins and species."
+        )
+
 
         return {"notes": notes, "results": results}
 
@@ -1949,6 +1974,7 @@ async def string_help(
       - functionality not available via MCP tools (e.g. GSEA or large datasets).
       - meaning of network edges and their visual encoding (network_edge_legend)
       - interpretation of enrichment strength and signal (enrichment_scores)
+      - grouping of terms in enrichment figures (enrichment_grouping)
     """
     if topic is None:
         return {"topics": list(HELP_TOPICS.keys())}
