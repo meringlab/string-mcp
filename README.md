@@ -31,12 +31,12 @@ For agentic workflows, use the optional agent skill at [skills/string-database/S
 
 ## Requirements
 
-- **Python** ≥ 3.10  
+- **Python** ≥ 3.11 (with Python 3.10, optional parameter descriptions are misplaced in the tool schemas)  
 - Dependencies (see `requirements.txt`):
   - `fastmcp==2.14.7`
   - `mcp==1.29.0`
-  - `httpx==0.28.1`
-  - `pydantic==2.11.7`
+  - `httpx>=0.28,<0.29`
+  - `pydantic>=2.11,<3.0`
 
 > **Note:** If the server crashes on startup, it is very likely due to an incompatible **FastMCP** version.
 

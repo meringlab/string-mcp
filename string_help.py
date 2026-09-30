@@ -26,6 +26,24 @@ HELP_TOPICS = {
         "Explain statistical significance with FDR, enrichment magnitude with strength, and overall term "
         "priority with signal."
     ),
+    "enrichment_grouping": (
+        "**Grouping of terms in STRING enrichment figures**:\n\n"
+        "Enrichment results often contain several terms that describe the same underlying biology, such as a "
+        "pathway and its more specific sub-processes. To make these easier to recognize, the enrichment figure "
+        "can group related terms together.\n\n"
+        "Terms are compared by the proteins they cover in the user's input, not by their full annotation in STRING. "
+        "Their similarity is the Jaccard index of these input-gene sets: the number of input proteins annotated with "
+        "both terms, divided by the number annotated with either. Two terms with very different full gene sets can "
+        "therefore still be grouped when they cover the same input proteins.\n\n"
+        "Terms whose similarity reaches the `group_by_similarity` threshold (default 0.8) are placed next to each "
+        "other in a shaded block, and the bar at the right edge of the figure, labelled 'Groups at similarity' "
+        "followed by the threshold, marks each group. Grouping changes only how the terms are arranged: no term is "
+        "removed, although the order can differ from a strict ranking. A lower threshold groups terms more loosely, "
+        "giving fewer and larger groups; a higher threshold keeps only close matches together, and at 1 only terms "
+        "with identical input-gene sets are grouped.\n\n"
+        "Terms in the same group reflect largely the same input proteins, so describe them as one theme rather than "
+        "as independent findings."
+    ),
     "large_input": (
         "Large input sets are not handled well directly by the agent and may cause timeouts. "
         "Please direct the user to the STRING web interface instead:\n\n"

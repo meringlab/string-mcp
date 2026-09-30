@@ -37,7 +37,7 @@ Use `string_interaction_evidence` when the user asks for STRING evidence pages f
 
 Use `string_enrichment` for functional enrichment. Report FDR values for enrichment claims. For a single protein, remember that STRING expands the query before enrichment.
 
-Use `string_enrichment_image_url` when the user asks for an enrichment plot or visualization. Match the enrichment category to the user's request when possible.
+Use `string_enrichment_image_url` when the user asks for an enrichment plot or visualization. Match the enrichment category to the user's request when possible. Each figure shows one category; use `graph_type=barplot` when the user asks for a bar chart.
 
 Use `string_ppi_enrichment` when the user asks whether a protein set has more interactions than expected by chance. Report the p-value.
 
@@ -49,7 +49,7 @@ Use `string_homology` for homolog or sequence-similarity questions across specie
 
 Use `string_create_file` only when the user asks for downloadable or reusable STRING-derived output.
 
-Use `string_help` for STRING usage, score interpretation, missing species, missing proteins, large input, Cytoscape, GSEA, regulatory-network limitations, line colors, version, and citation questions.
+Use `string_help` for STRING usage, score interpretation, enrichment-figure term grouping, missing species, missing proteins, large input, Cytoscape, GSEA, regulatory-network limitations, line colors, version, and citation questions.
 
 ## Analysis Workflow
 
