@@ -1,5 +1,7 @@
 # STRING MCP Server
 
+[![MCP Queen operational grade](https://mcpqueen.com/badge/org.string-db/string-mcp.svg)](https://mcpqueen.com/s/org.string-db/string-mcp)
+
 Exposes [STRING database](https://string-db.org) functionality as a **Model Context Protocol (MCP)** server.  
 
 This implementation allows AI agents and other MCP-compatible clients to access STRING data through a structured and self-describing interface.
