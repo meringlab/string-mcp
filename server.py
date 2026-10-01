@@ -113,7 +113,7 @@ server_port = int(config.get("server_port", 0))
 
 
 if not base_url:
-    raise ValueError("Missing required config: 'base_url', e.g. 'https://version-12-0.string-db.org' ")
+    raise ValueError("Missing required config: 'base_url', e.g. 'https://version-12-5.string-db.org' ")
 
 if not server_port:
     raise ValueError("Missing required config: 'server_port', e.g. '57416' ")
@@ -326,8 +326,14 @@ async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
         return error_payload
 
 
+# Latest published release, matching the GitHub release tag v<SERVER_VERSION>.
+# Format 1.<STRING release>.<server update>: 13 corresponds to STRING 12.5.
+# Bump it only together with a new GitHub release.
+SERVER_VERSION = "1.13.0"
+
 mcp = FastMCP(
     name="STRING Database MCP Server",
+    version=SERVER_VERSION,
     icons=[
         Icon(src="https://mcp.string-db.org/favicon.png", mimeType="image/png", sizes=["512x512"]),
     ],

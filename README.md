@@ -137,7 +137,7 @@ You should see a `200 OK` response with `content-type: text/event-stream`.
 **Note:** The Docker container will use the configuration from `config/server.config`. If this file doesn't exist, the container will copy from `server.config.example` on first run.
 
 
-STRING v12.0 is the frozen network release, available under the `/v12.0/` path.
+Frozen STRING releases are available under versioned paths: `/12.0/` (STRING v12.0) and `/12.5/` (STRING v12.5).
 
 
 ## License / Citation

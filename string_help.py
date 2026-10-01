@@ -116,7 +116,7 @@ HELP_TOPICS = {
         "Common reasons for missing proteins:\n"
         "1. In bacteria, some plasmid-encoded proteins are sometimes not included in STRING.\n"
         "2. In human, proteins such as VEGFA or VDR may be absent because they were not annotated as 'protein coding' "
-        "in the Ensembl release used for STRING v12.\n\n"
+        "in the Ensembl release used for STRING v12.0 and v12.5.\n\n"
         "If you suspect this, check the older STRING v11.5 at https://version-11-5.string-db.org."
     ),
     "missing_species": (
@@ -200,7 +200,7 @@ HELP_TOPICS = {
         "For score meanings, see the `scores` help topic."
     ),
     "version_and_citation": (
-        "Current STRING version: v12.0\n\n"
+        "Current STRING version: v12.5\n\n"
         "Citation:\n"
         "Szklarczyk D, Nastou K, Koutrouli M, Kirsch R, Mehryary F, Hachilif R, Hu D, Peluso ME, Huang Q, Fang T, Doncheva NT, Pyysalo S, Bork P, Jensen LJ, von Mering C. "
         "The STRING database in 2025: protein networks with directionality of regulation. "
