@@ -154,6 +154,10 @@ TYPED_NETWORK_NOTE = (
     "directed regulatory edges; it is not a regulatory-only network. To report regulatory events in this network, "
     "preserve the functional typed view and inspect `regulatory.directions`."
 )
+DENSE_NETWORK_NOTE = (
+    "This network is dense (like a hairball). To display it, use `string_network_clustering` with "
+    "`cluster_aware_layout=1`, which lays the network out by its clusters."
+)
 
 
 def _normalize_required_score(required_score: Optional[int]) -> Optional[int]:
@@ -329,7 +333,7 @@ async def _post_json(client: httpx.AsyncClient, endpoint: str, data: dict):
 # Latest published release, matching the GitHub release tag v<SERVER_VERSION>.
 # Format 1.<STRING release>.<server update>: 13 corresponds to STRING 12.5.
 # Bump it only together with a new GitHub release.
-SERVER_VERSION = "1.13.0"
+SERVER_VERSION = "1.13.1"
 
 mcp = FastMCP(
     name="STRING Database MCP Server",
@@ -536,6 +540,9 @@ async def string_interactions_query_set(
                 "Few interactions were found at the current confidence threshold (`required_score`). "
                 "To see more potential interactions, suggest lowering `required_score`."
             )
+
+        if is_dense_network(network_summary.get("nodes_with_interactions", 0), edge_count):
+            notes.append(DENSE_NETWORK_NOTE)
 
         requested_extension = params.get("add_white_nodes", 0)
         actual_added_protein_count = max(
@@ -939,6 +946,20 @@ async def string_network_clustering(
             "Defaults to faded."
         ))
     ] = None,
+    show_cluster_names: Annotated[
+        Optional[BinaryFlag],
+        Field(
+            description="Show cluster names on the image.",
+            examples=[0, 1],
+        )
+    ] = None,
+    cluster_aware_layout: Annotated[
+        Optional[BinaryFlag],
+        Field(
+            description="Lay out the network by its clusters, e.g. for a dense network.",
+            examples=[0, 1],
+        )
+    ] = None,
     network_flavor: Annotated[
         Optional[NetworkFlavor],
         Field(description=NETWORK_FLAVOR_DESCRIPTION)
@@ -1046,6 +1067,12 @@ async def string_network_clustering(
             clustering_parameter = 1.0
 
         params["network_clustering_parameter_leiden"] = clustering_parameter
+
+    # sent to both the image and the interactive link, so that the STRING page shows what the image shows
+    if show_cluster_names is not None:
+        params["show_cluster_names"] = show_cluster_names
+    if cluster_aware_layout is not None:
+        params["cluster_aware_layout"] = cluster_aware_layout
 
 
     if center_node_labels is not None:
@@ -2489,6 +2516,22 @@ QUERY_SET_NODE_SUMMARY_LIMIT = 250
 PARTNER_INTERACTION_DETAIL_LIMIT = 500
 PARTNER_UNIQUE_PROTEIN_LIMIT = 2000
 LOW_CONFIDENCE_REQUIRED_SCORE = 150
+
+# A network as dense as those that the STRING website offers to cluster before drawing them (its Dense Network page):
+# at least this many proteins with interactions and interactions, and this many interactions per protein on average.
+DENSE_NETWORK_MIN_PROTEINS = 100
+DENSE_NETWORK_MIN_INTERACTIONS = 500
+DENSE_NETWORK_MIN_AVERAGE_DEGREE = 4
+
+
+def is_dense_network(protein_count, interaction_count):
+    if protein_count < DENSE_NETWORK_MIN_PROTEINS:
+        return False
+    if interaction_count < DENSE_NETWORK_MIN_INTERACTIONS:
+        return False
+
+    average_degree = 2 * interaction_count / protein_count
+    return average_degree >= DENSE_NETWORK_MIN_AVERAGE_DEGREE
 
 
 def normalize_score_threshold(input_score_threshold):
